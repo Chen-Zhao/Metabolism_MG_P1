@@ -434,8 +434,13 @@ test_r2_cpls_3_f <- function(X,Y,B=200){
   c(NX,NY,adj_r2,adj_r2_bootstrap_se,lrtest_p,N,sum(cd_outlier))
 }
 
-
-test_r2_rda_3_f <- function(X,Y,B=200){
+test_r2_rda_3_f <- function(X,Y,B=200,nperm=10000,parallel = NULL){
+  
+  as.mlm.rda <- function (x){
+      X <- as.data.frame(qr.X(x$CCA$QR))
+      WA <- x$CCA$wa
+      list(model_1 = lm(WA ~ . , data = X),model_0 = lm(WA ~ 1 , data = X))
+    }
   
   na_idx <- which(colSums(apply(cbind(X,Y),1,is.na))==0)
   
@@ -481,12 +486,21 @@ test_r2_rda_3_f <- function(X,Y,B=200){
   NY = rank.condition(Y)$condition
   
   rda_res <- rda(Y~X)
-  adj_r2 <- RsquareAdj(rda_res)$r.squared
-  nperm = 500000
-  anova_test <- anova.cca(rda_res,permutations = how(nperm = nperm),model="direct")
+  adj_r2 <- RsquareAdj(rda_res)$adj.r.squared
+  
+  rda_res_mlm <- as.mlm.rda(rda_res)
+  # p <- linearHypothesis(rda_res_mlm[[1]],names(Anova(rda_res_mlm[[1]])[[3]]))
+  if(NCOL(X)==1){
+    p <- Anova(rda_res_mlm[[1]])['X','Pr(>F)']
+  }else{
+   lhtest <- linearHypothesis(rda_res_mlm[[1]],names(Anova(rda_res_mlm[[1]])[[3]]))
+   p <- getresult.linearHypothesis.mlm(lhtest )['Pillai',"Pr(>F)"]
+  }
+
+  anova_test <- anova.cca(rda_res,permutations = how(nperm = nperm),model="direct",parallel=parallel)
+  #p <- pf(anova_test$F[1],anova_test$Df[1],anova_test$Df[2],lower.tail = F)
   perm_p <- anova_test $`Pr(>F)`[1]
   N <- NROW(X)
-  p <- pf(anova_test$F[1],anova_test$Df[1],anova_test$Df[2],lower.tail = F)
   
   xi_cut <- apply(X,2,function(xi){
     cut(xi,breaks = c(-Inf,unique(quantile(xi))))
@@ -499,7 +513,7 @@ test_r2_rda_3_f <- function(X,Y,B=200){
     X_boot=X[balanced_resampling,,drop=FALSE]
     Y_boot=Y[balanced_resampling,,drop=FALSE]
     rda_res <- rda(Y_boot~X_boot)
-    adj_r2 <- RsquareAdj(rda_res)$r.squared
+    adj_r2 <- RsquareAdj(rda_res)$adj.r.squared
     adj_r2
   })
   
@@ -508,6 +522,88 @@ test_r2_rda_3_f <- function(X,Y,B=200){
   c(NX,NY,adj_r2,adj_r2_bootstrap_se,p,perm_p,N)
 }
 
+Pillai <- function (eig, q, df.res) {
+  test <- sum(eig/(1 + eig))
+  p <- length(eig)
+  s <- min(p, q)
+  n <- 0.5 * (df.res - p - 1)
+  m <- 0.5 * (abs(p - q) - 1)
+  tmp1 <- 2 * m + s + 1
+  tmp2 <- 2 * n + s + 1
+  c(test, (tmp2/tmp1 * test)/(s - test), s * tmp1, s * tmp2)
+}
+
+Wilks <- function (eig, q, df.res) {
+  test <- prod(1/(1 + eig))
+  p <- length(eig)
+  tmp1 <- df.res - 0.5 * (p - q + 1)
+  tmp2 <- (p * q - 2)/4
+  tmp3 <- p^2 + q^2 - 5
+  tmp3 <- if (tmp3 > 0) 
+    sqrt(((p * q)^2 - 4)/tmp3)
+  else 1
+  c(test, ((test^(-1/tmp3) - 1) * (tmp1 * tmp3 - 2 * tmp2))/p/q, 
+    p * q, tmp1 * tmp3 - 2 * tmp2)
+}
+
+HL <- function (eig, q, df.res) {
+  test <- sum(eig)
+  p <- length(eig)
+  m <- 0.5 * (abs(p - q) - 1)
+  n <- 0.5 * (df.res - p - 1)
+  s <- min(p, q)
+  tmp1 <- 2 * m + s + 1
+  tmp2 <- 2 * (s * n + 1)
+  c(test, (tmp2 * test)/s/s/tmp1, s * tmp1, tmp2)
+}
+
+Roy <- function (eig, q, df.res) {
+  p <- length(eig)
+  test <- max(eig)
+  tmp1 <- max(p, q)
+  tmp2 <- df.res - tmp1 + q
+  c(test, (tmp2 * test)/tmp1, tmp1, tmp2)
+}
+
+getresult.linearHypothesis.mlm <- function(x, SSP=TRUE, SSPE=SSP,
+                                       digits=10, ...){
+  test <- x$test
+  if (!is.null(x$P) && SSP){
+    P <- x$P
+  }
+  if (SSP){
+  }
+  if (SSPE){
+  }
+  if ((!is.null(x$singular)) && x$singular){
+    warning("the error SSP matrix is singular; multivariate tests are unavailable")
+    return(invisible(x))
+  }
+  SSPE.qr <- qr(x$SSPE)
+  # the following code is adapted from summary.manova
+  eigs <- Re(eigen(qr.coef(SSPE.qr, x$SSPH), symmetric = FALSE)$values)
+  tests <- matrix(NA, 4, 4)
+  rownames(tests) <- c("Pillai", "Wilks", "Hotelling-Lawley", "Roy")
+  if ("Pillai" %in% test)
+    tests[1, 1:4] <- Pillai(eigs, x$df, x$df.residual)
+  if ("Wilks" %in% test)
+    tests[2, 1:4] <- Wilks(eigs, x$df, x$df.residual)
+  if ("Hotelling-Lawley" %in% test)
+    tests[3, 1:4] <- HL(eigs, x$df, x$df.residual)
+  if ("Roy" %in% test)
+    tests[4, 1:4] <- Roy(eigs, x$df, x$df.residual)
+  tests <- na.omit(tests)
+  ok <- tests[, 2] >= 0 & tests[, 3] > 0 & tests[, 4] > 0
+  ok <- !is.na(ok) & ok
+  tests <- cbind(x$df, tests, pf(tests[ok, 2], tests[ok, 3], tests[ok, 4],
+                                 lower.tail = FALSE))
+  colnames(tests) <- c("Df", "test stat", "approx F", "num Df", "den Df", "Pr(>F)")
+  tests <- structure(as.data.frame(tests),
+                     heading = paste("\nMultivariate Test",
+                                     if (nrow(tests) > 1) "s", ": ", x$title, sep=""),
+                     class = c("anova", "data.frame"))
+  tests
+}
 
 cb_d <- function(range_res){
   write.table(range_res, "clipboard", sep="\t", row.names=FALSE, col.names=FALSE)
@@ -528,6 +624,12 @@ library(lmtest)
 library(outliers)
 library(parallel)
 library(vegan)
+library(candisc)
+
+pkgs <- c("car","quantreg","rcompanion","MASS","sure","nnet","CCP","pls","corpcor","lmtest","outliers","parallel","vegan",
+          "DescTools","multcompView","EMT","coin")
+require(pkgs)
+# install.packages("https://cran.r-project.org/src/contrib/Archive/rcompanion/rcompanion_2.3.26.tar.gz",repo=NULL,type="src")
 
 ## load old / create dataset
 
@@ -730,8 +832,10 @@ res_r2_merged_outcome <- apply(feature_order,1,function(x){
 tr <- cbind("MG","GO","DG3")
 x <- as.character(feature_order[1,])
 batch <- as.factor(d_kora_analysis$batch)
-
-res_r2_merged <- sapply(1:NROW(feature_order),function(ii){
+res_r2_merged <- matrix(NA,85,7)
+ii <- 0
+j <- ii
+for(ii in (j+1):NROW(feature_order)){
   
   print(ii)
   a0 <- ii
@@ -759,9 +863,9 @@ res_r2_merged <- sapply(1:NROW(feature_order),function(ii){
     if(min(X_min)<=0){
       X <- X + 1
     }
-    res <- rbind(test_r2_rda_3_f(X=X,Y=Y),
-                 test_r2_rda_3_f(X=log2(X),Y=Y),
-                 test_r2_rda_3_f(X=irnt_df_f(X),Y=Y)
+    res <- rbind(test_r2_rda_3_f(X=X,Y=Y,nperm = 1000000,parallel = 18),
+                 test_r2_rda_3_f(X=log2(X),Y=Y,nperm = 1000000,parallel = 18),
+                 test_r2_rda_3_f(X=irnt_df_f(X),Y=Y,nperm = 1000000,parallel = 18)
                  )
     
     rownames(res) <- c("log_raw","log_log","log_irn")
@@ -777,9 +881,9 @@ res_r2_merged <- sapply(1:NROW(feature_order),function(ii){
       p <- res[r2_model,5] ; perm_p <- res[r2_model,6]; N <- res[r2_model,7];
     }
     
-    c(r2_model,r2_model_r2,r2_model_r2_se,paste0(p_model,"_nx:",round(NX,2),"_ny:",round(NY,2)),p,perm_p,N)
+    res_r2_merged_tmp <- c(r2_model,r2_model_r2,r2_model_r2_se,paste0(p_model,"_nx:",round(NX,2),"_ny:",round(NY,2)),p,perm_p,N)
   }else{
-    res <- rbind(test_r2_rda_3_f(X=X,Y=Y))
+    res <- rbind(test_r2_rda_3_f(X=X,Y=Y,nperm = 1000000,parallel = 18))
     rownames(res) <- c("log_raw")
     colnames(res) <- c("shapiro_test_res","cook_weisberg_res","r2","r2_bootstrap_se","p","p.perm","N")
     r2_model <- "log_raw"
@@ -792,12 +896,13 @@ res_r2_merged <- sapply(1:NROW(feature_order),function(ii){
       p <- res[r2_model,5] ; perm_p <- res[r2_model,6]; N <- res[r2_model,7];
     }
     
-    c(r2_model,r2_model_r2,r2_model_r2_se,paste0(p_model,"_nx:",round(NX,2),"_ny:",round(NY,2)),p,perm_p,N)
+    res_r2_merged_tmp <- c(r2_model,r2_model_r2,r2_model_r2_se,paste0(p_model,"_nx:",round(NX,2),"_ny:",round(NY,2)),p,perm_p,N)
   }
-  
-})
+  res_r2_merged[ii,] <- res_r2_merged_tmp
+  print(res_r2_merged_tmp)
+}
 
-cb_d(t(res_r2_merged))
+cb_d(res_r2_merged)
 
 #
 
@@ -1114,3 +1219,5 @@ anova.cca(rda_res,by='margin', step=1000)
 # library(ggord)
 # library(ggplot2)
 # ggord(rda_res) + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+
+# save.image(file="results_20211208.combined_assoc.RData")
