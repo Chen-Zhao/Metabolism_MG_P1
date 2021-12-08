@@ -435,7 +435,7 @@ test_r2_cpls_3_f <- function(X,Y,B=200){
 }
 
 
-test_r2_rda_3_f <- function(X,Y,B=200){
+test_r2_rda_3_f <- function(X,Y,B=200,nperm=10000,parallel = NULL){
   
   na_idx <- which(colSums(apply(cbind(X,Y),1,is.na))==0)
   
@@ -482,8 +482,8 @@ test_r2_rda_3_f <- function(X,Y,B=200){
   
   rda_res <- rda(Y~X)
   adj_r2 <- RsquareAdj(rda_res)$r.squared
-  nperm = 500000
-  anova_test <- anova.cca(rda_res,permutations = how(nperm = nperm),model="direct")
+  
+  anova_test <- anova.cca(rda_res,permutations = how(nperm = nperm),model="direct",parallel=parallel)
   perm_p <- anova_test $`Pr(>F)`[1]
   N <- NROW(X)
   p <- pf(anova_test$F[1],anova_test$Df[1],anova_test$Df[2],lower.tail = F)
@@ -528,6 +528,11 @@ library(lmtest)
 library(outliers)
 library(parallel)
 library(vegan)
+
+pkgs <- c("car","quantreg","rcompanion","MASS","sure","nnet","CCP","pls","corpcor","lmtest","outliers","parallel","vegan",
+          "DescTools","multcompView","EMT","coin")
+require(pkgs)
+# install.packages("https://cran.r-project.org/src/contrib/Archive/rcompanion/rcompanion_2.3.26.tar.gz",repo=NULL,type="src")
 
 ## load old / create dataset
 
@@ -730,8 +735,8 @@ res_r2_merged_outcome <- apply(feature_order,1,function(x){
 tr <- cbind("MG","GO","DG3")
 x <- as.character(feature_order[1,])
 batch <- as.factor(d_kora_analysis$batch)
-
-res_r2_merged <- sapply(1:NROW(feature_order),function(ii){
+res_r2_merged <- matrix(NA,85,7)
+for(ii in 1:NROW(feature_order)){
   
   print(ii)
   a0 <- ii
@@ -759,9 +764,9 @@ res_r2_merged <- sapply(1:NROW(feature_order),function(ii){
     if(min(X_min)<=0){
       X <- X + 1
     }
-    res <- rbind(test_r2_rda_3_f(X=X,Y=Y),
-                 test_r2_rda_3_f(X=log2(X),Y=Y),
-                 test_r2_rda_3_f(X=irnt_df_f(X),Y=Y)
+    res <- rbind(test_r2_rda_3_f(X=X,Y=Y,nperm = 1000000,parallel = 18),
+                 test_r2_rda_3_f(X=log2(X),Y=Y,nperm = 1000000,parallel = 18),
+                 test_r2_rda_3_f(X=irnt_df_f(X),Y=Y,nperm = 1000000,parallel = 18)
                  )
     
     rownames(res) <- c("log_raw","log_log","log_irn")
@@ -777,9 +782,9 @@ res_r2_merged <- sapply(1:NROW(feature_order),function(ii){
       p <- res[r2_model,5] ; perm_p <- res[r2_model,6]; N <- res[r2_model,7];
     }
     
-    c(r2_model,r2_model_r2,r2_model_r2_se,paste0(p_model,"_nx:",round(NX,2),"_ny:",round(NY,2)),p,perm_p,N)
+    res_r2_merged_tmp <- c(r2_model,r2_model_r2,r2_model_r2_se,paste0(p_model,"_nx:",round(NX,2),"_ny:",round(NY,2)),p,perm_p,N)
   }else{
-    res <- rbind(test_r2_rda_3_f(X=X,Y=Y))
+    res <- rbind(test_r2_rda_3_f(X=X,Y=Y,nperm = 1000000,parallel = 18))
     rownames(res) <- c("log_raw")
     colnames(res) <- c("shapiro_test_res","cook_weisberg_res","r2","r2_bootstrap_se","p","p.perm","N")
     r2_model <- "log_raw"
@@ -792,12 +797,12 @@ res_r2_merged <- sapply(1:NROW(feature_order),function(ii){
       p <- res[r2_model,5] ; perm_p <- res[r2_model,6]; N <- res[r2_model,7];
     }
     
-    c(r2_model,r2_model_r2,r2_model_r2_se,paste0(p_model,"_nx:",round(NX,2),"_ny:",round(NY,2)),p,perm_p,N)
+    res_r2_merged_tmp <- c(r2_model,r2_model_r2,r2_model_r2_se,paste0(p_model,"_nx:",round(NX,2),"_ny:",round(NY,2)),p,perm_p,N)
   }
-  
-})
+  res_r2_merged[ii,] <- res_r2_merged_tmp
+}
 
-cb_d(t(res_r2_merged))
+cb_d(res_r2_merged)
 
 #
 
@@ -1114,3 +1119,5 @@ anova.cca(rda_res,by='margin', step=1000)
 # library(ggord)
 # library(ggplot2)
 # ggord(rda_res) + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+
+# save.image(file="results_20211208.combined_assoc.RData")
