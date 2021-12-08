@@ -435,6 +435,80 @@ test_r2_cpls_3_f <- function(X,Y,B=200){
 }
 
 
+test_r2_rda_3_f <- function(X,Y,B=200){
+  
+  na_idx <- which(colSums(apply(cbind(X,Y),1,is.na))==0)
+  
+  X <- X[na_idx,,drop=FALSE]
+  Y <- Y[na_idx,,drop=FALSE]
+  
+  rda_res <- rda(Y~X)
+  options(warn = -1)
+  na_idx <- which(colSums(apply(cooks.distance(rda_res),1,is.na))>0)
+  
+  while(length(na_idx)>0){
+    X <- X[-na_idx,,drop=FALSE]
+    Y <- Y[-na_idx,,drop=FALSE]
+    rda_res <- rda(Y~X)
+    na_idx <- which(colSums(apply(cooks.distance(rda_res),1,is.na))>0)
+    if(sum(class(apply(X,2,unique))=="matrix")==1){
+      Xcolidx <- apply(apply(X,2,unique),2,length)>1
+    }else{
+      Xcolidx <- sapply(apply(X,2,unique),length)>1
+    }
+    X <- X[,Xcolidx,drop=FALSE]
+  }
+  options(warn = 1)
+  rda_res <- rda(Y~X)
+  
+  cd_outlier <- rowSums(apply(cooks.distance(rda_res),2,function(cd){cd>4 | outliers::scores(cd,type="chisq",prob=TRUE)>0.99999}))>0
+  
+  X_tmp <- X[!(cd_outlier ),,drop=FALSE]
+  if(length(unique(X_tmp))>1){
+    X <- X[!(cd_outlier ),,drop=FALSE]
+    Y <- Y[!(cd_outlier ),,drop=FALSE]
+  }
+  
+  
+  if(sum(class(apply(X,2,unique))=="matrix")==1){
+    Xcolidx <- apply(apply(X,2,unique),2,length)>1
+  }else{
+    Xcolidx <- sapply(apply(X,2,unique),length)>1
+  }
+  X <- X[,Xcolidx,drop=FALSE]
+  
+  NX = rank.condition(X)$condition
+  NY = rank.condition(Y)$condition
+  
+  rda_res <- rda(Y~X)
+  adj_r2 <- RsquareAdj(rda_res)$r.squared
+  nperm = 500000
+  anova_test <- anova.cca(rda_res,permutations = how(nperm = nperm),model="direct")
+  perm_p <- anova_test $`Pr(>F)`[1]
+  N <- NROW(X)
+  p <- pf(anova_test$F[1],anova_test$Df[1],anova_test$Df[2],lower.tail = F)
+  
+  xi_cut <- apply(X,2,function(xi){
+    cut(xi,breaks = c(-Inf,unique(quantile(xi))))
+  })
+  xi_cut_q <- apply(xi_cut,1,paste0,collapse="_")
+  
+  adj_r2_bootstrap <- sapply(1:B,function(i){
+    balanced_resampling <- tapply(1:NROW(X),xi_cut_q,function(xin){sample(xin,NROW(xin),replace = T)})
+    balanced_resampling <- unlist(balanced_resampling)
+    X_boot=X[balanced_resampling,,drop=FALSE]
+    Y_boot=Y[balanced_resampling,,drop=FALSE]
+    rda_res <- rda(Y_boot~X_boot)
+    adj_r2 <- RsquareAdj(rda_res)$r.squared
+    adj_r2
+  })
+  
+  adj_r2_bootstrap_se = sqrt(sum((adj_r2_bootstrap-mean(adj_r2_bootstrap))^2)/(B-1))
+  
+  c(NX,NY,adj_r2,adj_r2_bootstrap_se,p,perm_p,N)
+}
+
+
 cb_d <- function(range_res){
   write.table(range_res, "clipboard", sep="\t", row.names=FALSE, col.names=FALSE)
 }
@@ -453,6 +527,7 @@ library(corpcor)
 library(lmtest)
 library(outliers)
 library(parallel)
+library(vegan)
 
 ## load old / create dataset
 
@@ -488,17 +563,21 @@ res_r2_merged_outcome <- apply(feature_order,1,function(x){
     r2_model <- names(which.max(res[c(1,2,4,5),3]))
     r2_model_r2 <- res[r2_model,3]
     r2_model_r2_se <- res[r2_model,4]
-    if(sum(res[r2_model,1:2]>0.05)==2){
+    if(sum(res[r2_model,1:2]>0.01)==2){
       p_model <- r2_model; p <- res[r2_model,5]; N <- res[r2_model,6]-res[r2_model,7]
-    }else if(sum(res["irn_irn",1:2]>0.05)==2){
+    }else if(sum(res["irn_raw",1:2]>0.01)==2){
+      p_model <- "irn_raw"; p <- res["irn_raw",5]; N <- res["irn_raw",6]-res["irn_raw",7]
+    }else if(sum(res["irn_log",1:2]>0.01)==2){
+      p_model <- "irn_log"; p <- res["irn_log",5]; N <- res["irn_log",6]-res["irn_log",7]
+    }else if(sum(res["irn_irn",1:2]>0.01)==2){
       p_model <- "irn_irn"; p <- res["irn_irn",5]; N <- res["irn_irn",6]-res["irn_irn",7]
     }else{
       options(warn = -1)
-      d_r2_tmp = data.frame(x=log2(y0),y=x0)
+      d_r2_tmp = data.frame(x=irnt_df_f(y0),y=irnt_f(x0))
       d_r2_tmp = d_r2_tmp[colSums(apply(d_r2_tmp,1,is.na))==0,]
-      res_rq <- rq(y~.,data = d_r2_tmp )
-      p_model <- "median_reg";
-      p <- nagelkerke(res_rq)$Likelihood.ratio.test[1,"p.value"]
+      res_rq <- lm(y~.,data = d_r2_tmp )
+      p_model <- "irnt_spearman";
+      p <- cor.test(d_r2_tmp$y,predict(res_rq))$p.value
       N <- NROW(d_r2_tmp)
       options(warn = 1)
     }
@@ -652,7 +731,7 @@ tr <- cbind("MG","GO","DG3")
 x <- as.character(feature_order[1,])
 batch <- as.factor(d_kora_analysis$batch)
 
-res_r2_merged <- sapply(1:NroW(feature_order),function(ii){
+res_r2_merged <- sapply(1:NROW(feature_order),function(ii){
   
   print(ii)
   a0 <- ii
@@ -663,13 +742,13 @@ res_r2_merged <- sapply(1:NroW(feature_order),function(ii){
   y0 <- d_kora_analysis[,tr]
   y0 <- apply(y0,2,function(yi){ yi-tapply(yi,batch,median)[batch] + median(yi)}) # median center
   
-  d_r2_tmp_0 <- data.frame(y=log2(y0),as.data.frame(x_list))
+  d_r2_tmp_0 <- data.frame(y=log2(y0),as.data.frame(x_list_tmp))
   idxNA <- colSums(apply(d_r2_tmp_0,1,is.na))==0
   
   Y <- as.matrix(log2(y0)[idxNA,])
   if(type=="ordinal" || type=="catological"){
-    x_list_tmp <- as.factor(x_list_tmp)
-    X_tmp <- model.matrix(~x_list_tmp)[idxNA,-1]
+    x_list_tmp <- as.factor(x_list_tmp[which(idxNA)])
+    X_tmp <- model.matrix(~x_list_tmp)[,-1]
   }else{
     X_tmp <- as.data.frame(x_list_tmp)[idxNA,]
   }
@@ -680,214 +759,45 @@ res_r2_merged <- sapply(1:NroW(feature_order),function(ii){
     if(min(X_min)<=0){
       X <- X + 1
     }
-    res <- rbind(test_r2_cpls_3_f(X=X,Y=Y),
-                 test_r2_cpls_3_f(X=log2(X),Y=Y),
-                 test_r2_cpls_3_f(X=irnt_df_f(X),Y=Y)
+    res <- rbind(test_r2_rda_3_f(X=X,Y=Y),
+                 test_r2_rda_3_f(X=log2(X),Y=Y),
+                 test_r2_rda_3_f(X=irnt_df_f(X),Y=Y)
                  )
     
     rownames(res) <- c("log_raw","log_log","log_irn")
-    colnames(res) <- c("shapiro_test_res","cook_weisberg_res","r2","r2_bootstrap_se","lrtest_p","Nt","Ncd")
+    colnames(res) <- c("shapiro_test_res","cook_weisberg_res","r2","r2_bootstrap_se","p","p.perm","N")
     r2_model <- names(which.max(res[,3]))
     r2_model_r2 <- res[r2_model,3]
     r2_model_r2_se <- res[r2_model,4]
     if(sum(res[r2_model,1:2]<100)==2){
-      p_model <- r2_model; p <- res[r2_model,5]; N <- res[r2_model,6]
+      p_model <- r2_model; NX <- res[r2_model,1];  NY <- res[r2_model,2]; 
+      p <- res[r2_model,5] ; perm_p <- res[r2_model,6]; N <- res[r2_model,7];
     }else{
-      p_model <- "ill_matrix"; p <- "NA"; N <- NA
+      p_model <- "ill_matrix"; NX <- res[r2_model,1];  NY <- res[r2_model,2]; 
+      p <- res[r2_model,5] ; perm_p <- res[r2_model,6]; N <- res[r2_model,7];
     }
     
-    c(r2_model,r2_model_r2,r2_model_r2_se,paste0(p_model,"_nx:",round(NX,2),"_ny:",round(NY,2)),p,N)
+    c(r2_model,r2_model_r2,r2_model_r2_se,paste0(p_model,"_nx:",round(NX,2),"_ny:",round(NY,2)),p,perm_p,N)
   }else{
-    res <- rbind(test_r2_cpls_3_f(X=Y,Y=X))
+    res <- rbind(test_r2_rda_3_f(X=X,Y=Y))
+    rownames(res) <- c("log_raw")
+    colnames(res) <- c("shapiro_test_res","cook_weisberg_res","r2","r2_bootstrap_se","p","p.perm","N")
+    r2_model <- "log_raw"
+    r2_model_r2 <- res[r2_model,3]
+    r2_model_r2_se <- res[r2_model,4]
+    if(sum(res[r2_model,1:2]<100)==2){
+      p_model <- r2_model; p <- res[r2_model,5]; perm_p <- res[r2_model,6]; N <- res[r2_model,7];
+    }else{
+      p_model <- "ill_matrix"; NX <- res[r2_model,1];  NY <- res[r2_model,2]; 
+      p <- res[r2_model,5] ; perm_p <- res[r2_model,6]; N <- res[r2_model,7];
+    }
     
+    c(r2_model,r2_model_r2,r2_model_r2_se,paste0(p_model,"_nx:",round(NX,2),"_ny:",round(NY,2)),p,perm_p,N)
   }
   
-  fit_tmp_0 <- lm(y~.,data=d_r2_tmp_0)
-  if(identical(batch,x_list_tmp)){
-    d_r2_tmp_1 <- d_r2_tmp_0
-  }else{
-    d_r2_tmp_1 <- data.frame(y=log2(y0),batch=batch,as.data.frame(x_list),as.data.frame(x_list_tmp))
-  }
-  
-  print(x)
-  x0 <- d_kora_analysis[,x[2]]
-  type <- x[4]
-  y0 <- d_kora_analysis[,tr]
-  y0 <- apply(y0,2,function(yi){ yi-tapply(yi,batch,median)[batch] + median(yi)}) # median center
-  
-  if(type=="continous"){
-    x0_min <- min(x0,na.rm=T)
-    if(min(x0_min)<=0){
-      x0 <- x0+1
-    }
-    res <- rbind(test_r2_conti_3_f(d_r2_tmp = data.frame(x=log2(y0),y=x0)),
-                 test_r2_conti_3_f(d_r2_tmp = data.frame(x=log2(y0),y=log2(x0))),
-                 test_r2_conti_3_f(d_r2_tmp = data.frame(x=log2(y0),y=irnt_f(x0))),
-                 test_r2_conti_3_f(d_r2_tmp = data.frame(x=irnt_df_f(y0),y=x0)),
-                 test_r2_conti_3_f(d_r2_tmp = data.frame(x=irnt_df_f(y0),y=log2(x0))),
-                 test_r2_conti_3_f(d_r2_tmp = data.frame(x=irnt_df_f(y0),y=irnt_f(x0)))
-    )
-    rownames(res) <- c("log_raw","log_log","log_irn","irn_raw","irn_log","irn_irn")
-    colnames(res) <- c("shapiro_test_res","cook_weisberg_res","r2","r2_bootstrap_se","lrtest_p","Nt","Ncd")
-    r2_model <- names(which.max(res[c(1,2,4,5),3]))
-    r2_model_r2 <- res[r2_model,3]
-    r2_model_r2_se <- res[r2_model,4]
-    if(sum(res[r2_model,1:2]>0.05)==2){
-      p_model <- r2_model; p <- res[r2_model,5]; N <- res[r2_model,6]-res[r2_model,7]
-    }else if(sum(res["irn_irn",1:2]>0.05)==2){
-      p_model <- "irn_irn"; p <- res["irn_irn",5]; N <- res["irn_irn",6]-res["irn_irn",7]
-    }else{
-      options(warn = -1)
-      d_r2_tmp = data.frame(x=log2(y0),y=x0)
-      d_r2_tmp = d_r2_tmp[colSums(apply(d_r2_tmp,1,is.na))==0,]
-      res_rq <- rq(y~.,data = d_r2_tmp )
-      p_model <- "median_reg";
-      p <- nagelkerke(res_rq)$Likelihood.ratio.test[1,"p.value"]
-      N <- NROW(d_r2_tmp)
-      options(warn = 1)
-    }
-    c(r2_model,r2_model_r2,r2_model_r2_se,p_model,p,N)
-  }else if(type=="ordinal"){
-    x0 <- as.factor(x0)
-    res <- rbind(test_r2_discordinal_outcome_3_f(d_r2_tmp = data.frame(y=log2(y0),x=x0)),
-                 test_r2_discordinal_outcome_3_f(d_r2_tmp = data.frame(y=irnt_df_f(y0),x=x0)),
-                 test_r2_disccateg_outcome_3_f(d_r2_tmp = data.frame(y=log2(y0),x=x0)),
-                 test_r2_disccateg_outcome_3_f(d_r2_tmp = data.frame(y=irnt_df_f(y0),x=x0))
-    )
-    rownames(res) <- c("log_ord","irnt_ord","log_cat","irn_cat")
-    colnames(res) <- c("shapiro_test_res","cook_weisberg_res","r2","r2_bootstrap_se","lrtest_p","Nt","Ncd")
-    r2_model <- names(which.max(res[res[,1]==1,3]))
-    r2_model_r2 <- res[r2_model,3]
-    r2_model_r2_se <- res[r2_model,4]
-    if(res[r2_model,1]==1){
-      p_model <- r2_model; p <- res[r2_model,5]; N <- res[r2_model,6]-res[r2_model,7]
-      c(r2_model,r2_model_r2,r2_model_r2_se,p_model,p,N)
-    }else{
-      d_r2_tmp = data.frame(y=log2(y0),x=x0)
-      d_r2_tmp = d_r2_tmp[colSums(apply(d_r2_tmp,1,is.na))==0,]
-      X = as.matrix(d_r2_tmp[,1:3])
-      Y = as.matrix(model.matrix(~d_r2_tmp$x)[,-1])
-      NX = rank.condition(X)$condition
-      NY = rank.condition(Y)$condition
-      
-      cc_res <- cppls(Y~X,1,data=list(X=X,Y=Y))
-      X_proj <- cc_res$scores[,1]
-      cc_res_comp1 <- cancor(X_proj,Y)
-      Y_proj <- Y%*%cc_res_comp1$ycoef[,1]
-      fit_tmp_1 <- lm(Y_proj~X_proj)
-      cd_outlier <- cooks.distance(fit_tmp_1)>2
-      
-      X <- X[!(cd_outlier ),]
-      Y <- Y[!(cd_outlier ),]
-      
-      NX = rank.condition(X)$condition
-      NY = rank.condition(Y)$condition
-      
-      cc_res <- cppls(Y~X,1,data=list(X=X,Y=Y))
-      X_proj <- cc_res$scores[,1]
-      # kruskal.test(X_proj,as.factor(rowSums(Y)))
-      cc_res_comp1 <- cancor(X_proj,Y)
-      Y_proj <- Y%*%cc_res_comp1$ycoef[,1]
-      
-      p <- cor.test(X_proj,Y_proj,method="spearman",exact = FALSE)$p.value
-      p_model <- "cpls_spearman"
-      N <- NROW(X)
-      c(r2_model,r2_model_r2,r2_model_r2_se,paste0(p_model,"_nx:",round(NX,2),"_ny:",round(NY,2)),p,N)
-    }
-  }else if(type=="catological"){
-    unique_rm = is.na(match(x0,names(which(table(x0)>1))))
-    x0 <- as.factor((x0[!unique_rm]))
-    y0 <- y0[!unique_rm,]
-    res <- rbind(test_r2_disccateg_outcome_3_f(d_r2_tmp = data.frame(y=log2(y0),x=x0)),
-                 test_r2_disccateg_outcome_3_f(d_r2_tmp = data.frame(y=irnt_df_f(y0),x=x0))
-    )
-    rownames(res) <- c("log_cat","irn_cat")
-    colnames(res) <- c("shapiro_test_res","cook_weisberg_res","r2","r2_bootstrap_se","lrtest_p","Nt","Ncd")
-    r2_model <- names(which.max(res[,3]))
-    
-    r2_model_r2 <- res[r2_model,3]
-    r2_model_r2_se <- res[r2_model,4]
-    if(res[r2_model,1]==1){
-      p_model <- r2_model; p <- res[r2_model,5]; N <- res[r2_model,6]-res[r2_model,7]
-      c(r2_model,r2_model_r2,r2_model_r2_se,p_model,p,N)
-    }else{
-      d_r2_tmp = data.frame(y=log2(y0),x=x0)
-      d_r2_tmp = d_r2_tmp[colSums(apply(d_r2_tmp,1,is.na))==0,]
-      X = as.matrix(d_r2_tmp[,1:3])
-      Y = as.matrix(model.matrix(~d_r2_tmp$x)[,-1])
-      NX = rank.condition(X)$condition
-      NY = rank.condition(Y)$condition
-      
-      cc_res <- cppls(Y~X,1,data=list(X=X,Y=Y))
-      X_proj <- cc_res$scores[,1]
-      cc_res_comp1 <- cancor(X_proj,Y)
-      Y_proj <- Y%*%cc_res_comp1$ycoef[,1]
-      fit_tmp_1 <- lm(Y_proj~X_proj)
-      cd_outlier <- cooks.distance(fit_tmp_1)>2
-      
-      X <- X[!(cd_outlier ),]
-      Y <- Y[!(cd_outlier ),]
-      
-      NX = rank.condition(X)$condition
-      NY = rank.condition(Y)$condition
-      
-      cc_res <- cppls(Y~X,1,data=list(X=X,Y=Y))
-      X_proj <- cc_res$scores[,1]
-      # kruskal.test(X_proj,as.factor(rowSums(Y)))
-      cc_res_comp1 <- cancor(X_proj,Y)
-      Y_proj <- Y%*%cc_res_comp1$ycoef[,1]
-      
-      p <- cor.test(X_proj,Y_proj,method="spearman",exact = FALSE)$p.value
-      p_model <- "cpls_spearman"
-      N <- NROW(X)
-      c(r2_model,r2_model_r2,r2_model_r2_se,paste0(p_model,"_nx:",round(NX,2),"_ny:",round(NY,2)),p,N)
-    }
-  }else if(type=="binary"){
-    x0 <- as.factor(x0)
-    res <- rbind(test_r2_discBIN_outcome_3_f(d_r2_tmp = data.frame(y=log2(y0),x=x0)),
-                 test_r2_discBIN_outcome_3_f(d_r2_tmp = data.frame(y=irnt_df_f(y0),x=x0))
-    )
-    rownames(res) <- c("log_cat","irn_cat")
-    colnames(res) <- c("shapiro_test_res","cook_weisberg_res","r2","r2_bootstrap_se","lrtest_p","Nt","Ncd")
-    r2_model <- names(which.max(res[res[,1]==1,3]))
-    r2_model_r2 <- res[r2_model,3]
-    r2_model_r2_se <- res[r2_model,4]
-    if(res[r2_model,1]==1){
-      p_model <- r2_model; p <- res[r2_model,5]; N <- res[r2_model,6]-res[r2_model,7]
-      c(r2_model,r2_model_r2,r2_model_r2_se,p_model,p,N)
-    }else{
-      d_r2_tmp = data.frame(y=log2(y0),x=x0)
-      d_r2_tmp = d_r2_tmp[colSums(apply(d_r2_tmp,1,is.na))==0,]
-      X = as.matrix(d_r2_tmp[,1:3])
-      Y = as.matrix(model.matrix(~d_r2_tmp$x)[,-1])
-      NX = rank.condition(X)$condition
-      NY = 1
-      
-      cc_res <- cppls(Y~X,1,data=list(X=X,Y=Y))
-      X_proj <- cc_res$scores[,1]
-      cc_res_comp1 <- cancor(X_proj,Y)
-      Y_proj <- Y%*%cc_res_comp1$ycoef[,1]
-      fit_tmp_1 <- lm(Y_proj~X_proj)
-      cd_outlier <- cooks.distance(fit_tmp_1)>2
-      
-      X <- X[!(cd_outlier ),]
-      Y <- Y[!(cd_outlier ),]
-      
-      NX = rank.condition(X)$condition
-      NY = 1
-      
-      cc_res <- cppls(Y~X,1,data=list(X=X,Y=Y))
-      X_proj <- cc_res$scores[,1]
-      
-      
-      p <- kruskal.test(X_proj,as.factor((Y)))$p.value
-      p_model <- "cpls_kruskal"
-      N <- NROW(X)
-      c(r2_model,r2_model_r2,r2_model_r2_se,paste0(p_model,"_nx:",round(NX,2),"_ny:",round(NY,2)),p,N)
-    }
-  }
 })
 
+cb_d(t(res_r2_merged))
 
 #
 
@@ -1076,5 +986,131 @@ res_r2_mg_semipart_FS_tmp <- mclapply(a0s_totest,function(ii){
   c(r2_semipart,r2_semipart_bootstrap_se,lrtest_p,perm_p)
 },mc.cores=12)
 
+### vegan cca rda
+
+test_data <- d_kora_analysis[,c("MG","GO","DG3","utgfr_ckd_cr","utglukfast_a","utwhoish","uh_eisen")]
+test_data <- test_data[colSums(apply(test_data,1,is.na))==0,]
+test_data_metabolic <- log2(test_data[,1:3])
+test_data_env <- test_data[,-(1:3)]
+
+rda_res <- rda(test_data_metabolic~utgfr_ckd_cr+utglukfast_a+utwhoish+uh_eisen,test_data_env)
+
+plot(hatvalues(rda_res))
+pairs(cooks.distance(rda_res))
+cd_rm <- rowSums(apply(cooks.distance(rda_res),2,function(cd){cd>4 | outliers::scores(cd,type="chisq",prob=TRUE)>0.9999}))>0
+
+test_data <- d_kora_analysis[,c("MG","GO","DG3","utgfr_ckd_cr","utglukfast_a","utwhoish","uh_eisen")]
+test_data <- test_data[colSums(apply(test_data,1,is.na))==0,]
+test_data <- test_data[!cd_rm,]
+test_data_metabolic <- log2(test_data[,1:3])
+test_data_env <- test_data[,-(1:3)]
+rda_res <- rda(test_data_metabolic~utgfr_ckd_cr+utglukfast_a+utwhoish+uh_eisen,test_data_env)
+cca_res <- cca(test_data_metabolic~utgfr_ckd_cr+utglukfast_a+utwhoish+uh_eisen,test_data_env)
+
+goodness(rda_res)
+goodness(cca_res)
+
+inertcomp(rda_res)
+inertcomp(cca_res)
+
+vif.cca(rda_res)
+vif.cca(cca_res)
+
+plot(rda_res, dis=c("wa","lc"), type="p")
+ordispider(rda_res)
+
+spenvcor(rda_res)
+spenvcor(cca_res)
 
 
+varpart_res <- varpart(test_data_metabolic,log2(test_data[,4,drop=FALSE]),test_data[,5,drop=FALSE],test_data[,6:7,drop=FALSE],
+                       chisquare = FALSE)
+varpart_res
+
+showvarparts(3, bg=2:4)
+plot(varpart_res, bg=2:4)
+
+anova(rda_res)
+anova(cca_res)
+anova(rda_res,rda_res)
+anova(cca_res,cca_res)
+
+
+plot(rda_res, type = "n")
+ordispider(rda_res) # segment from LC to WA scores
+points(rda_res, dis="si", cex=5*hatvalues(rda_res), pch=21, bg=2) # WA scores
+text(rda_res, dis="bp", col=4)
+
+plot(rda_res)
+rda_res_sum <- summary(rda_res)
+R2adj <- RsquareAdj(rda_res)$adj.r.squared
+R2adj
+
+rda_res_sum$cont
+
+plot(rda_res)
+spe2.sc <- scores(rda_res, choices=1:2, display="sp")
+arrows(0,0,spe2.sc[,1], spe2.sc[,2], length=0, lty=1, col='red')
+text(spe2.sc[,1], spe2.sc[,2], labels = rownames(spe2.sc),adj = c(-0.2, NA),cex=0.8)
+
+rda_res_step <- ordistep(rda_res, direction="forward", pstep=1000, R2scop=TRUE)
+anova.cca(rda_res, step=1000)
+
+anova_cca_res <- anova.cca(rda_res,by='margin', permutations = how(nperm=9999))
+anova_cca_res <- anova.cca(rda_res,by='axis', permutations = how(nperm=9999))
+anova.cca(rda_res,step=10000)
+
+pf(29.369,df1 = 4,df2 = 463,lower.tail = F)
+
+rda_res <- metaMDS(test_data[,-6])
+
+plot(rda_res, type="p")
+spe2.sc <- scores(rda_res, choices=1:2, display="sp")
+arrows(0,0,spe2.sc[,1], spe2.sc[,2], length=0, lty=1, col='red')
+text(spe2.sc[,1], spe2.sc[,2], labels = rownames(spe2.sc),adj = c(-0.2, NA),cex=0.8)
+
+rda_res <- cca(test_data_metabolic~utgfr_ckd_cr+utglukfast_a+utwhoish+uh_eisen,test_data_env)
+rda_res <- capscale(test_data_metabolic~utgfr_ckd_cr+utglukfast_a+utwhoish+uh_eisen,test_data_env)
+
+plot(rda_res)
+summary(rda_res)
+R2adj <- RsquareAdj(rda_res)$adj.r.squared
+R2adj
+
+plot(rda_res)
+spe2.sc <- scores(rda_res, choices=1:2, display="sp")
+arrows(0,0,spe2.sc[,1], spe2.sc[,2], length=0, lty=1, col='red')
+text(spe2.sc[,1], spe2.sc[,2], labels = rownames(spe2.sc),adj = c(-0.2, NA),cex=0.8)
+
+rda_res_step <- ordistep(rda_res, direction="forward", pstep=1000, R2scop=TRUE)
+anova.cca(rda_res, step=1000)
+
+anova.cca(rda_res,by='margin', step=1000)
+
+rda_res <- rda(test_data_metabolic~utglukfast_a+utwhoish+uh_eisen+Condition(utgfr_ckd_cr),test_data_env)
+
+plot(rda_res)
+summary(rda_res)
+R2adj <- RsquareAdj(rda_res)$adj.r.squared
+R2adj
+
+plot(rda_res)
+spe2.sc <- scores(rda_res, choices=1:2, display="sp")
+arrows(0,0,spe2.sc[,1], spe2.sc[,2], length=0, lty=1, col='red')
+text(spe2.sc[,1], spe2.sc[,2], labels = rownames(spe2.sc),adj = c(-0.2, NA),cex=0.8)
+
+rda_res_step <- ordistep(rda_res, direction="forward", pstep=1000, R2scop=TRUE)
+anova.cca(rda_res, step=1000)
+
+anova.cca(rda_res,by='margin', step=1000)
+
+
+# options(repos = c(
+#   fawda123 = 'https://fawda123.r-universe.dev',
+#   CRAN = 'https://cloud.r-project.org'))
+
+# Install ggord
+# install.packages('ggord')
+# library(ggord)
+# library(ggplot2)
+# ggord(rda_res) + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
