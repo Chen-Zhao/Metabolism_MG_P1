@@ -425,7 +425,8 @@ apply(feature_order,1,function(x){
       c(r2_model,r2_model_r2,r2_model_r2_se,p_model,p,N)
     }
   }else if(type=="catological"){
-    
+   
+     
   }
   
 })
