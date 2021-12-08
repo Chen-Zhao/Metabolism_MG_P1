@@ -12,7 +12,6 @@ irnt_df_f <- function(x){
   apply(x,2,irnt_f)
 }
 
-
 r2_nagelkerke_f <- function(model, l_base) {
   L.full <- insight::get_loglikelihood(model)
   D.full <- -2 * L.full
