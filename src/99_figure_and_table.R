@@ -329,12 +329,9 @@ library(sure)
 library(nnet)
 library(CCP)
 library(pls)
-<<<<<<< HEAD
 library(corpcor)
 library(lmtest)
 library(outliers)
-=======
->>>>>>> f796646ca37931775f16efc26f33dfe0c4205484
 
 ## load old / create dataset
 
@@ -395,16 +392,12 @@ apply(feature_order,1,function(x){
     r2_model_r2_se <- res[r2_model,4]
     if(res[r2_model,1]==1){
       p_model <- r2_model; p <- res[r2_model,5]; N <- res[r2_model,6]-res[r2_model,7]
-<<<<<<< HEAD
       c(r2_model,r2_model_r2,r2_model_r2_se,p_model,p,N)
-=======
->>>>>>> f796646ca37931775f16efc26f33dfe0c4205484
     }else{
       d_r2_tmp = data.frame(y=log2(y0),x=x0)
       d_r2_tmp = d_r2_tmp[colSums(apply(d_r2_tmp,1,is.na))==0,]
       X = as.matrix(d_r2_tmp[,1:3])
       Y = as.matrix(model.matrix(~d_r2_tmp$x)[,-1])
-<<<<<<< HEAD
       NX = rank.condition(X)$condition
       NY = rank.condition(Y)$condition
       
@@ -434,14 +427,6 @@ apply(feature_order,1,function(x){
   }else if(type=="catological"){
    
      
-=======
-      cpls_res = cppls(Y~X,3,data=list(X,Y), validation = "CV")
-      cpls_res_pred <- predict(cpls_res,X)[,,1]%*%cpls_res$Yloadings[,1]
-      cor(cpls_res_pred,X%*%cpls_res$loadings[,1])
-      cor(Y%*%cpls_res$Yloadings[,1],X%*%cpls_res$loadings[,1])
-      
-    }
->>>>>>> f796646ca37931775f16efc26f33dfe0c4205484
   }
   
 })
@@ -462,17 +447,13 @@ X <- X - rep(cx, each = n)
 Y <- Y - rep(cy, each = n)
 
 cpls_res = cppls(Y~X,3,data=list(X,Y), validation = "CV")
-<<<<<<< HEAD
 cpls_res_rev = cppls(X~Y,3,data=list(X,Y), validation = "CV")
 
-=======
->>>>>>> f796646ca37931775f16efc26f33dfe0c4205484
 cpls_res_pred <- predict(cpls_res,X)
 
 cpls_res_pred_cancor <- cancor(cpls_res_pred[,,1],Y)
 Y_scores <- Y%*%cpls_res$Yloadings
 X_scores <- X%*%cpls_res$projection
-<<<<<<< HEAD
 X_scores_2 <- X%*%cpls_res$loadings
 
 p_perm <- p.perm(X,Y,nboot = 5000)
@@ -487,9 +468,6 @@ Y_score <- Y%*%cpls_res_rev$projection
 
 
 cancor(X%*%X_proj[,1],Y_score)$cor
-=======
-
->>>>>>> f796646ca37931775f16efc26f33dfe0c4205484
 
 cancor(Y_score,cpls_res$scores)$cor
 cancor(Y,cpls_res$scores)$cor
