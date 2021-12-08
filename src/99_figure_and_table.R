@@ -329,9 +329,12 @@ library(sure)
 library(nnet)
 library(CCP)
 library(pls)
+<<<<<<< HEAD
 library(corpcor)
 library(lmtest)
 library(outliers)
+=======
+>>>>>>> f796646ca37931775f16efc26f33dfe0c4205484
 
 ## load old / create dataset
 
@@ -392,12 +395,16 @@ apply(feature_order,1,function(x){
     r2_model_r2_se <- res[r2_model,4]
     if(res[r2_model,1]==1){
       p_model <- r2_model; p <- res[r2_model,5]; N <- res[r2_model,6]-res[r2_model,7]
+<<<<<<< HEAD
       c(r2_model,r2_model_r2,r2_model_r2_se,p_model,p,N)
+=======
+>>>>>>> f796646ca37931775f16efc26f33dfe0c4205484
     }else{
       d_r2_tmp = data.frame(y=log2(y0),x=x0)
       d_r2_tmp = d_r2_tmp[colSums(apply(d_r2_tmp,1,is.na))==0,]
       X = as.matrix(d_r2_tmp[,1:3])
       Y = as.matrix(model.matrix(~d_r2_tmp$x)[,-1])
+<<<<<<< HEAD
       NX = rank.condition(X)$condition
       NY = rank.condition(Y)$condition
       
@@ -427,6 +434,14 @@ apply(feature_order,1,function(x){
   }else if(type=="catological"){
    
      
+=======
+      cpls_res = cppls(Y~X,3,data=list(X,Y), validation = "CV")
+      cpls_res_pred <- predict(cpls_res,X)[,,1]%*%cpls_res$Yloadings[,1]
+      cor(cpls_res_pred,X%*%cpls_res$loadings[,1])
+      cor(Y%*%cpls_res$Yloadings[,1],X%*%cpls_res$loadings[,1])
+      
+    }
+>>>>>>> f796646ca37931775f16efc26f33dfe0c4205484
   }
   
 })
@@ -447,13 +462,17 @@ X <- X - rep(cx, each = n)
 Y <- Y - rep(cy, each = n)
 
 cpls_res = cppls(Y~X,3,data=list(X,Y), validation = "CV")
+<<<<<<< HEAD
 cpls_res_rev = cppls(X~Y,3,data=list(X,Y), validation = "CV")
 
+=======
+>>>>>>> f796646ca37931775f16efc26f33dfe0c4205484
 cpls_res_pred <- predict(cpls_res,X)
 
 cpls_res_pred_cancor <- cancor(cpls_res_pred[,,1],Y)
 Y_scores <- Y%*%cpls_res$Yloadings
 X_scores <- X%*%cpls_res$projection
+<<<<<<< HEAD
 X_scores_2 <- X%*%cpls_res$loadings
 
 p_perm <- p.perm(X,Y,nboot = 5000)
@@ -468,6 +487,9 @@ Y_score <- Y%*%cpls_res_rev$projection
 
 
 cancor(X%*%X_proj[,1],Y_score)$cor
+=======
+
+>>>>>>> f796646ca37931775f16efc26f33dfe0c4205484
 
 cancor(Y_score,cpls_res$scores)$cor
 cancor(Y,cpls_res$scores)$cor
@@ -475,6 +497,76 @@ cancor(Y,cpls_res$scores)$cor
 
 #cor(cpls_res$scores[,1],cpls_res$Yscores[,1])
 
+
+x_list <- lapply(a0s,function(a0){
+  f_get_x(a0=a0,feature_order=feature_order,res_r2_mg=res_r2_mg)
+})
+a0s_totest <- setdiff(1:NCOL(res_r2_mg),a0s)
+
+res_r2_mg_semipart_FS_tmp <- mclapply(a0s_totest,function(ii){
+  print(ii)
+  a0 <- ii
+  x_list_tmp <- f_get_x(a0=a0,feature_order=feature_order,res_r2_mg=res_r2_mg)
+  
+  d_r2_tmp_0 <- data.frame(y=log2(y0),batch=batch,as.data.frame(x_list))
+  fit_tmp_0 <- lm(y~.,data=d_r2_tmp_0)
+  if(identical(batch,x_list_tmp)){
+    d_r2_tmp_1 <- d_r2_tmp_0
+  }else{
+    d_r2_tmp_1 <- data.frame(y=log2(y0),batch=batch,as.data.frame(x_list),as.data.frame(x_list_tmp))
+  }
+  fit_tmp_1 <- lm(y~.,data=d_r2_tmp_1)
+  cd_0 <- cooks.distance(fit_tmp_0)
+  cd_1 <- cooks.distance(fit_tmp_1)
+  
+  cd_in <- sort(as.numeric(intersect(names(which(cd_0<=4)), names(which(cd_1<=4)))))
+  if(length(cd_in)>0){
+    d_r2_tmp_0 <- d_r2_tmp_0[cd_in,]
+    d_r2_tmp_1 <- d_r2_tmp_1[cd_in,]
+    x_list_tmp <- x_list_tmp[cd_in]
+  }
+  fit_tmp_0 <- lm(y~.,data=d_r2_tmp_0)
+  fit_tmp_1 <- lm(y~.,data=d_r2_tmp_1)
+  df <- attr(logLik(fit_tmp_1),"df")
+  df_0 <- attr(logLik(fit_tmp_0),"df")
+  lrtest_p <- pchisq(2*abs(logLik(fit_tmp_1)-logLik(fit_tmp_0)),df=df-df_0,lower.tail = F)
+  
+  
+  r2_semipart <- summary(fit_tmp_1)$r.squared-summary(fit_tmp_0)$r.squared
+  B=200
+  r2_bootstrap <- sapply(1:B,function(i){
+    if(length(which(sapply(d_r2_tmp_1,class)=="factor"))>0){
+      disc_strings <- apply(d_r2_tmp_1[,which(sapply(d_r2_tmp_1,class)=="factor"),drop=FALSE],1,paste0,collapse="__")
+      balanced_resampling <- 1:NROW(disc_strings)
+      balanced_resampling <- tapply(balanced_resampling,disc_strings,function(iii){sample(as.character(iii),NROW(iii),replace = TRUE)})
+      balanced_resampling <- as.numeric(unlist(balanced_resampling))
+    }else{
+      balanced_resampling <- sample(1:NROW(d_r2_tmp_1),NROW(d_r2_tmp_1),replace = TRUE)
+    }
+    
+    fit_tmp_0_boot <- lm(y~.,data=d_r2_tmp_0[balanced_resampling,])
+    fit_tmp_1_boot <- lm(y~.,data=d_r2_tmp_1[balanced_resampling,])
+    summary(fit_tmp_1_boot)$r.squared-summary(fit_tmp_0_boot)$r.squared
+  })
+  r2_semipart_bootstrap_se = sqrt(sum((r2_bootstrap-mean(r2_bootstrap))^2)/(B-1))
+  
+  
+  permutation_test <- sapply(1:5e3,function(i){
+    d_r2_tmp_0_perm <- d_r2_tmp_0
+    d_r2_tmp_1_perm <- d_r2_tmp_1
+    set.seed(i)
+    perm_idx <- sample(1:NROW(d_r2_tmp_0),NROW(d_r2_tmp_0))
+    d_r2_tmp_1_perm$y <- d_r2_tmp_0_perm$y <- d_r2_tmp_0[perm_idx,1]
+    fit_tmp_0_perm <- lm(y~.,data=d_r2_tmp_0_perm)
+    fit_tmp_1_perm <- lm(y~.,data=d_r2_tmp_1_perm)
+    summary(fit_tmp_1_perm)$r.squared-summary(fit_tmp_0_perm)$r.squared
+  })
+  
+  perm_p <- 1-sum(r2_semipart>permutation_test)/5000
+  c(r2_semipart,r2_semipart_bootstrap_se,lrtest_p,perm_p)
+},mc.cores=12)
+
+cancor(cpls_res$Yscores,cpls_res$scores)
 
 x_list <- lapply(a0s,function(a0){
   f_get_x(a0=a0,feature_order=feature_order,res_r2_mg=res_r2_mg)
