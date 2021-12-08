@@ -446,6 +446,11 @@ test_r2_rda_3_f <- function(X,Y,B=200,nperm=10000,parallel = NULL){
   X <- X[na_idx,,drop=FALSE]
   Y <- Y[na_idx,,drop=FALSE]
   
+  if(NCOL(X)>1){
+    X_rm_sing <- apply(X,2,function(x){min(table(x))})>1
+    X <- X[,X_rm_sing,drop=FALSE]
+  }
+  
   rda_res <- rda(Y~X)
   options(warn = -1)
   na_idx <- which(colSums(apply(cooks.distance(rda_res),1,is.na))>0)
