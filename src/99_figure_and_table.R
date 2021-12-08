@@ -359,6 +359,85 @@ test_r2_discBIN_outcome_3_f <- function(d_r2_tmp,B=200){
   c(converged,NA,adj_r2,adj_r2_bootstrap_se,lrtest_p,Nt,Ncd)
 }
 
+f_get_x <- function(a0,feature_order=feature_order,res_r2_mg=res_r2_mg){
+  fe <- feature_order[a0,2]
+  
+  x0 <- d_kora_analysis[,fe]
+  
+  type <- feature_order[a0,4]
+  trans <- res_r2_mg[1,a0]
+  
+  
+  if(grepl("_log",trans)){
+    if(min(x0,na.rm=T)<=0){
+      x0 <- x0 + 1
+    }
+    x0 <- log2(x0)
+  }else if(grepl("_irn",trans)){
+    x0 <- irnt_f(x0)
+  }else if(type!="continous"){
+    x0 <- as.factor(x0)
+  }
+  x0
+}
+
+
+
+test_r2_cpls_3_f <- function(X,Y,B=200){
+  
+  NX = rank.condition(X)$condition
+  NY = rank.condition(Y)$condition
+  
+  cc_res <- cppls(Y~X,1,data=list(X=X,Y=Y))
+  X_proj <- cc_res$scores[,1]
+  cc_res_comp1 <- cancor(X_proj,Y)
+  Y_proj <- Y%*%cc_res_comp1$ycoef[,1]
+  fit_tmp_1 <- lm(Y_proj~X_proj)
+  cd_outlier <- cooks.distance(fit_tmp_1)>2
+  
+  X <- X[!(cd_outlier ),,drop=FALSE]
+  Y <- Y[!(cd_outlier ),]
+  
+  NX = rank.condition(X)$condition
+  NY = rank.condition(Y)$condition
+  
+  cc_res <- cppls(Y~X,1,data=list(X=X,Y=Y))
+  X_proj <- cc_res$scores[,1]
+  cc_res_comp1 <- cancor(X_proj,Y)
+  Y_proj <- Y%*%cc_res_comp1$ycoef[,1]
+  adj_r2 <- cc_res_comp1$cor^2
+  
+  lrtest_p <- cor.test(X_proj,Y_proj,method="spearman",exact = FALSE)$p.value
+  N <- NROW(X)
+  
+  yi_cut <- apply(Y,2,function(xi){
+    cut(xi,breaks = c(-Inf,unique(quantile(xi))))
+  })
+  yi_cut_q <- apply(yi_cut,1,paste0,collapse="_")
+  
+  adj_r2_bootstrap <- sapply(1:B,function(i){
+    balanced_resampling <- tapply(1:NROW(X),yi_cut_q,function(xin){sample(xin,NROW(xin),replace = T)})
+    balanced_resampling <- unlist(balanced_resampling)
+    X_boot=X[balanced_resampling,,drop=FALSE]
+    Y_boot=Y[balanced_resampling,,drop=FALSE]
+    cc_res <- cppls(Y~X,1,data=list(X=X_boot,Y=Y_boot))
+    X_proj <- cc_res$scores[,1]
+    cc_res_comp1 <- cancor(X_proj,Y_boot)
+    Y_proj <- Y_boot%*%cc_res_comp1$ycoef[,1]
+    adj_r2 <- cc_res_comp1$cor^2
+    adj_r2
+    
+  })
+  
+  adj_r2_bootstrap_se = sqrt(sum((adj_r2_bootstrap-mean(adj_r2_bootstrap))^2)/(B-1))
+  
+  c(NX,NY,adj_r2,adj_r2_bootstrap_se,lrtest_p,N,sum(cd_outlier))
+}
+
+
+cb_d <- function(range_res){
+  write.table(range_res, "clipboard", sep="\t", row.names=FALSE, col.names=FALSE)
+}
 
 ## required packages
 
@@ -419,7 +498,7 @@ res_r2_merged_outcome <- apply(feature_order,1,function(x){
       d_r2_tmp = d_r2_tmp[colSums(apply(d_r2_tmp,1,is.na))==0,]
       res_rq <- rq(y~.,data = d_r2_tmp )
       p_model <- "median_reg";
-      p <- nagelkerke(res_rq)$Likelihood.ratio.test[,4]
+      p <- nagelkerke(res_rq)$Likelihood.ratio.test[1,"p.value"]
       N <- NROW(d_r2_tmp)
       options(warn = 1)
     }
@@ -480,7 +559,252 @@ res_r2_merged_outcome <- apply(feature_order,1,function(x){
     )
     rownames(res) <- c("log_cat","irn_cat")
     colnames(res) <- c("shapiro_test_res","cook_weisberg_res","r2","r2_bootstrap_se","lrtest_p","Nt","Ncd")
+    r2_model <- names(which.max(res[,3]))
+    
+    r2_model_r2 <- res[r2_model,3]
+    r2_model_r2_se <- res[r2_model,4]
+    if(res[r2_model,1]==1){
+      p_model <- r2_model; p <- res[r2_model,5]; N <- res[r2_model,6]-res[r2_model,7]
+      c(r2_model,r2_model_r2,r2_model_r2_se,p_model,p,N)
+    }else{
+      d_r2_tmp = data.frame(y=log2(y0),x=x0)
+      d_r2_tmp = d_r2_tmp[colSums(apply(d_r2_tmp,1,is.na))==0,]
+      X = as.matrix(d_r2_tmp[,1:3])
+      Y = as.matrix(model.matrix(~d_r2_tmp$x)[,-1])
+      NX = rank.condition(X)$condition
+      NY = rank.condition(Y)$condition
+      
+      cc_res <- cppls(Y~X,1,data=list(X=X,Y=Y))
+      X_proj <- cc_res$scores[,1]
+      cc_res_comp1 <- cancor(X_proj,Y)
+      Y_proj <- Y%*%cc_res_comp1$ycoef[,1]
+      fit_tmp_1 <- lm(Y_proj~X_proj)
+      cd_outlier <- cooks.distance(fit_tmp_1)>2
+      
+      X <- X[!(cd_outlier ),]
+      Y <- Y[!(cd_outlier ),]
+      
+      NX = rank.condition(X)$condition
+      NY = rank.condition(Y)$condition
+      
+      cc_res <- cppls(Y~X,1,data=list(X=X,Y=Y))
+      X_proj <- cc_res$scores[,1]
+      # kruskal.test(X_proj,as.factor(rowSums(Y)))
+      cc_res_comp1 <- cancor(X_proj,Y)
+      Y_proj <- Y%*%cc_res_comp1$ycoef[,1]
+      
+      p <- cor.test(X_proj,Y_proj,method="spearman",exact = FALSE)$p.value
+      p_model <- "cpls_spearman"
+      N <- NROW(X)
+      c(r2_model,r2_model_r2,r2_model_r2_se,paste0(p_model,"_nx:",round(NX,2),"_ny:",round(NY,2)),p,N)
+    }
+  }else if(type=="binary"){
+    x0 <- as.factor(x0)
+    res <- rbind(test_r2_discBIN_outcome_3_f(d_r2_tmp = data.frame(y=log2(y0),x=x0)),
+                 test_r2_discBIN_outcome_3_f(d_r2_tmp = data.frame(y=irnt_df_f(y0),x=x0))
+    )
+    rownames(res) <- c("log_cat","irn_cat")
+    colnames(res) <- c("shapiro_test_res","cook_weisberg_res","r2","r2_bootstrap_se","lrtest_p","Nt","Ncd")
     r2_model <- names(which.max(res[res[,1]==1,3]))
+    r2_model_r2 <- res[r2_model,3]
+    r2_model_r2_se <- res[r2_model,4]
+    if(res[r2_model,1]==1){
+      p_model <- r2_model; p <- res[r2_model,5]; N <- res[r2_model,6]-res[r2_model,7]
+      c(r2_model,r2_model_r2,r2_model_r2_se,p_model,p,N)
+    }else{
+      d_r2_tmp = data.frame(y=log2(y0),x=x0)
+      d_r2_tmp = d_r2_tmp[colSums(apply(d_r2_tmp,1,is.na))==0,]
+      X = as.matrix(d_r2_tmp[,1:3])
+      Y = as.matrix(model.matrix(~d_r2_tmp$x)[,-1])
+      NX = rank.condition(X)$condition
+      NY = 1
+      
+      cc_res <- cppls(Y~X,1,data=list(X=X,Y=Y))
+      X_proj <- cc_res$scores[,1]
+      cc_res_comp1 <- cancor(X_proj,Y)
+      Y_proj <- Y%*%cc_res_comp1$ycoef[,1]
+      fit_tmp_1 <- lm(Y_proj~X_proj)
+      cd_outlier <- cooks.distance(fit_tmp_1)>2
+      
+      X <- X[!(cd_outlier ),]
+      Y <- Y[!(cd_outlier ),]
+      
+      NX = rank.condition(X)$condition
+      NY = 1
+      
+      cc_res <- cppls(Y~X,1,data=list(X=X,Y=Y))
+      X_proj <- cc_res$scores[,1]
+      
+      
+      
+      p <- kruskal.test(X_proj,as.factor((Y)))$p.value
+      p_model <- "cpls_kruskal"
+      N <- NROW(X)
+      c(r2_model,r2_model_r2,r2_model_r2_se,paste0(p_model,"_nx:",round(NX,2),"_ny:",round(NY,2)),p,N)
+    }
+  }
+})
+
+
+## test MG+GO+DG3 test as outcome
+
+tr <- cbind("MG","GO","DG3")
+x <- as.character(feature_order[1,])
+batch <- as.factor(d_kora_analysis$batch)
+
+res_r2_merged <- sapply(1:NroW(feature_order),function(ii){
+  
+  print(ii)
+  a0 <- ii
+  x <- as.character(feature_order[ii,])
+  x_list_tmp <- d_kora_analysis[,x[2]]
+  
+  type <- x[4]
+  y0 <- d_kora_analysis[,tr]
+  y0 <- apply(y0,2,function(yi){ yi-tapply(yi,batch,median)[batch] + median(yi)}) # median center
+  
+  d_r2_tmp_0 <- data.frame(y=log2(y0),as.data.frame(x_list))
+  idxNA <- colSums(apply(d_r2_tmp_0,1,is.na))==0
+  
+  Y <- as.matrix(log2(y0)[idxNA,])
+  if(type=="ordinal" || type=="catological"){
+    x_list_tmp <- as.factor(x_list_tmp)
+    X_tmp <- model.matrix(~x_list_tmp)[idxNA,-1]
+  }else{
+    X_tmp <- as.data.frame(x_list_tmp)[idxNA,]
+  }
+  X <- as.matrix(X_tmp)
+  
+  if(type=="continous"){
+    X_min <- min(X,na.rm=T)
+    if(min(X_min)<=0){
+      X <- X + 1
+    }
+    res <- rbind(test_r2_cpls_3_f(X=X,Y=Y),
+                 test_r2_cpls_3_f(X=log2(X),Y=Y),
+                 test_r2_cpls_3_f(X=irnt_df_f(X),Y=Y)
+                 )
+    
+    rownames(res) <- c("log_raw","log_log","log_irn")
+    colnames(res) <- c("shapiro_test_res","cook_weisberg_res","r2","r2_bootstrap_se","lrtest_p","Nt","Ncd")
+    r2_model <- names(which.max(res[,3]))
+    r2_model_r2 <- res[r2_model,3]
+    r2_model_r2_se <- res[r2_model,4]
+    if(sum(res[r2_model,1:2]<100)==2){
+      p_model <- r2_model; p <- res[r2_model,5]; N <- res[r2_model,6]
+    }else{
+      p_model <- "ill_matrix"; p <- "NA"; N <- NA
+    }
+    
+    c(r2_model,r2_model_r2,r2_model_r2_se,paste0(p_model,"_nx:",round(NX,2),"_ny:",round(NY,2)),p,N)
+  }else{
+    res <- rbind(test_r2_cpls_3_f(X=Y,Y=X))
+    
+  }
+  
+  fit_tmp_0 <- lm(y~.,data=d_r2_tmp_0)
+  if(identical(batch,x_list_tmp)){
+    d_r2_tmp_1 <- d_r2_tmp_0
+  }else{
+    d_r2_tmp_1 <- data.frame(y=log2(y0),batch=batch,as.data.frame(x_list),as.data.frame(x_list_tmp))
+  }
+  
+  print(x)
+  x0 <- d_kora_analysis[,x[2]]
+  type <- x[4]
+  y0 <- d_kora_analysis[,tr]
+  y0 <- apply(y0,2,function(yi){ yi-tapply(yi,batch,median)[batch] + median(yi)}) # median center
+  
+  if(type=="continous"){
+    x0_min <- min(x0,na.rm=T)
+    if(min(x0_min)<=0){
+      x0 <- x0+1
+    }
+    res <- rbind(test_r2_conti_3_f(d_r2_tmp = data.frame(x=log2(y0),y=x0)),
+                 test_r2_conti_3_f(d_r2_tmp = data.frame(x=log2(y0),y=log2(x0))),
+                 test_r2_conti_3_f(d_r2_tmp = data.frame(x=log2(y0),y=irnt_f(x0))),
+                 test_r2_conti_3_f(d_r2_tmp = data.frame(x=irnt_df_f(y0),y=x0)),
+                 test_r2_conti_3_f(d_r2_tmp = data.frame(x=irnt_df_f(y0),y=log2(x0))),
+                 test_r2_conti_3_f(d_r2_tmp = data.frame(x=irnt_df_f(y0),y=irnt_f(x0)))
+    )
+    rownames(res) <- c("log_raw","log_log","log_irn","irn_raw","irn_log","irn_irn")
+    colnames(res) <- c("shapiro_test_res","cook_weisberg_res","r2","r2_bootstrap_se","lrtest_p","Nt","Ncd")
+    r2_model <- names(which.max(res[c(1,2,4,5),3]))
+    r2_model_r2 <- res[r2_model,3]
+    r2_model_r2_se <- res[r2_model,4]
+    if(sum(res[r2_model,1:2]>0.05)==2){
+      p_model <- r2_model; p <- res[r2_model,5]; N <- res[r2_model,6]-res[r2_model,7]
+    }else if(sum(res["irn_irn",1:2]>0.05)==2){
+      p_model <- "irn_irn"; p <- res["irn_irn",5]; N <- res["irn_irn",6]-res["irn_irn",7]
+    }else{
+      options(warn = -1)
+      d_r2_tmp = data.frame(x=log2(y0),y=x0)
+      d_r2_tmp = d_r2_tmp[colSums(apply(d_r2_tmp,1,is.na))==0,]
+      res_rq <- rq(y~.,data = d_r2_tmp )
+      p_model <- "median_reg";
+      p <- nagelkerke(res_rq)$Likelihood.ratio.test[1,"p.value"]
+      N <- NROW(d_r2_tmp)
+      options(warn = 1)
+    }
+    c(r2_model,r2_model_r2,r2_model_r2_se,p_model,p,N)
+  }else if(type=="ordinal"){
+    x0 <- as.factor(x0)
+    res <- rbind(test_r2_discordinal_outcome_3_f(d_r2_tmp = data.frame(y=log2(y0),x=x0)),
+                 test_r2_discordinal_outcome_3_f(d_r2_tmp = data.frame(y=irnt_df_f(y0),x=x0)),
+                 test_r2_disccateg_outcome_3_f(d_r2_tmp = data.frame(y=log2(y0),x=x0)),
+                 test_r2_disccateg_outcome_3_f(d_r2_tmp = data.frame(y=irnt_df_f(y0),x=x0))
+    )
+    rownames(res) <- c("log_ord","irnt_ord","log_cat","irn_cat")
+    colnames(res) <- c("shapiro_test_res","cook_weisberg_res","r2","r2_bootstrap_se","lrtest_p","Nt","Ncd")
+    r2_model <- names(which.max(res[res[,1]==1,3]))
+    r2_model_r2 <- res[r2_model,3]
+    r2_model_r2_se <- res[r2_model,4]
+    if(res[r2_model,1]==1){
+      p_model <- r2_model; p <- res[r2_model,5]; N <- res[r2_model,6]-res[r2_model,7]
+      c(r2_model,r2_model_r2,r2_model_r2_se,p_model,p,N)
+    }else{
+      d_r2_tmp = data.frame(y=log2(y0),x=x0)
+      d_r2_tmp = d_r2_tmp[colSums(apply(d_r2_tmp,1,is.na))==0,]
+      X = as.matrix(d_r2_tmp[,1:3])
+      Y = as.matrix(model.matrix(~d_r2_tmp$x)[,-1])
+      NX = rank.condition(X)$condition
+      NY = rank.condition(Y)$condition
+      
+      cc_res <- cppls(Y~X,1,data=list(X=X,Y=Y))
+      X_proj <- cc_res$scores[,1]
+      cc_res_comp1 <- cancor(X_proj,Y)
+      Y_proj <- Y%*%cc_res_comp1$ycoef[,1]
+      fit_tmp_1 <- lm(Y_proj~X_proj)
+      cd_outlier <- cooks.distance(fit_tmp_1)>2
+      
+      X <- X[!(cd_outlier ),]
+      Y <- Y[!(cd_outlier ),]
+      
+      NX = rank.condition(X)$condition
+      NY = rank.condition(Y)$condition
+      
+      cc_res <- cppls(Y~X,1,data=list(X=X,Y=Y))
+      X_proj <- cc_res$scores[,1]
+      # kruskal.test(X_proj,as.factor(rowSums(Y)))
+      cc_res_comp1 <- cancor(X_proj,Y)
+      Y_proj <- Y%*%cc_res_comp1$ycoef[,1]
+      
+      p <- cor.test(X_proj,Y_proj,method="spearman",exact = FALSE)$p.value
+      p_model <- "cpls_spearman"
+      N <- NROW(X)
+      c(r2_model,r2_model_r2,r2_model_r2_se,paste0(p_model,"_nx:",round(NX,2),"_ny:",round(NY,2)),p,N)
+    }
+  }else if(type=="catological"){
+    unique_rm = is.na(match(x0,names(which(table(x0)>1))))
+    x0 <- as.factor((x0[!unique_rm]))
+    y0 <- y0[!unique_rm,]
+    res <- rbind(test_r2_disccateg_outcome_3_f(d_r2_tmp = data.frame(y=log2(y0),x=x0)),
+                 test_r2_disccateg_outcome_3_f(d_r2_tmp = data.frame(y=irnt_df_f(y0),x=x0))
+    )
+    rownames(res) <- c("log_cat","irn_cat")
+    colnames(res) <- c("shapiro_test_res","cook_weisberg_res","r2","r2_bootstrap_se","lrtest_p","Nt","Ncd")
+    r2_model <- names(which.max(res[,3]))
+    
     r2_model_r2 <- res[r2_model,3]
     r2_model_r2_se <- res[r2_model,4]
     if(res[r2_model,1]==1){
@@ -564,7 +888,12 @@ res_r2_merged_outcome <- apply(feature_order,1,function(x){
   }
 })
 
+
+#
+
+
 ### test cppls.fit
+
 
 Rcal(X, Y, Yprim, weights) 
 
