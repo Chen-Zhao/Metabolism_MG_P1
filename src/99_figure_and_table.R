@@ -1226,3 +1226,41 @@ anova.cca(rda_res,by='margin', step=1000)
 # ggord(rda_res) + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
 
 # save.image(file="results_20211208.combined_assoc.RData")
+
+### rda condition
+
+Z <- X+rnorm(NROW(X))*5
+
+
+rda_res_cond <- rda(Y~Z+Condition(X))
+
+rda_res_full <- rda(Y~X)
+rda_res_full_1 <- rda(Y~X+Z)
+rda_res_full_2 <- rda(Y~Z)
+
+
+anova(rda_res_full)
+anova(rda_res_cond)
+
+adj_r2 <- RsquareAdj(rda_res_full_1)$r.squared-RsquareAdj(rda_res_full_2)$r.squared
+adj_r2
+
+rda_res_cond_mlm <- as.mlm.rda(rda_res_cond)
+p <- Anova(rda_res_cond_mlm[[1]])['Z','Pr(>F)']
+
+rda_res_mlm_1 <- as.mlm.rda(rda_res_full_1)
+rda_res_mlm_2 <- as.mlm.rda(rda_res_full_2)
+
+# p <- linearHypothesis(rda_res_mlm[[1]],names(Anova(rda_res_mlm[[1]])[[3]]))
+if(NCOL(X)==1){
+  p <- Anova(rda_res_mlm_1[[1]])['X','Pr(>F)']
+}else{
+  lhtest <- linearHypothesis(rda_res_mlm[[1]],names(Anova(rda_res_mlm[[1]])[[3]]))
+  p <- getresult.linearHypothesis.mlm(lhtest )['Pillai',"Pr(>F)"]
+}
+
+anova_test <- anova(rda_res_full_2,rda_res_full_1,permutations = how(nperm = nperm),model="direct",parallel=parallel)
+# p <- pf(anova_test$F[2],anova_test$ResDf[1],anova_test$ResDf[2],lower.tail = F)
+perm_p <- anova_test $`Pr(>F)`[1]
+N <- NROW(X)
+
