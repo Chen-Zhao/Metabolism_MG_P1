@@ -1265,6 +1265,7 @@ while(min_p_less_bon5){
   },mc.cores=2)
   
   res_r2_merged_semipart_FS_tmp <- sapply(res_r2_merged_semipart_FS_tmp,function(x)x)
+  res_r2_merged_semipart_FS_tmp[3:4,][which(is.na(res_r2_merged_semipart_FS_tmp[3:4,]))] <- 1
   res_r2_merged_semipart_FS_res[a0s_totest,] <- cbind(t(res_r2_merged_semipart_FS_tmp),length(a0s))
   a0s <- c(a0s,a0s_totest[which.min(res_r2_merged_semipart_FS_tmp[3,])[1]])
   min_p_less_bon5 <- min(res_r2_merged_semipart_FS_tmp[3,])<0.05/85
