@@ -1123,7 +1123,7 @@ while(min_p_less_bon5){
   
   a0s_totest <- setdiff(1:NCOL(res_r2_go),a0s)
   
-  res_r2_merged_semipart_tmp <- mclapply(a0s_totest,function(ii){
+  res_r2_merged_semipart_FS_tmp <- mclapply(a0s_totest,function(ii){
     print(ii)
     a0 <- ii
     x_list_tmp <- get_x_rdc_f(a0=a0,feature_order=feature_order,res_r2_merged=res_r2_merged)
@@ -1161,12 +1161,22 @@ while(min_p_less_bon5){
     
     cd_0_in <- apply(as.matrix(cd_0),1,max)<4
     cd_1_in <- apply(as.matrix(cd_1),1,max)<4
+    cd_1_sc <- apply(as.matrix(cd_1),1,max)
     
     ot_0_in <- apply(apply(as.matrix(cd_0),2,outliers::scores,type="chisq",prob=TRUE)<=0.9999,1,min)==1
     ot_1_in <- apply(apply(as.matrix(cd_1),2,outliers::scores,type="chisq",prob=TRUE)<=0.9999,1,min)==1
     
+    if(sum(is.na(ot_0_in))>length(ot_0_in)/2){
+      ot_0_in[is.na(ot_0_in)] <- TRUE
+    }
+    if(sum(is.na(ot_1_in))>length(ot_1_in)/2){
+      ot_1_in[is.na(ot_1_in)] <- TRUE
+    }
+    ot_1_sc <- apply(apply(as.matrix(cd_1),2,outliers::scores,type="chisq",prob=TRUE),1,max)
+    
     cd_in <- which((cd_0_in+cd_1_in+ot_0_in+ot_1_in)==4)
     
+    #idx_disc_n1 <- apply(d_r2_tmp_1[cd_in,],2,function(di){if(length(table(di))<=2){min(table(di))<2 || length(table(di))==1}else{FALSE}})
     if(class(x_list_tmp_level)=="factor"){
       idx_disc_n1 <- sum(table(x_list_tmp_level[cd_in])>1)<2
       levels_missed <- as.numeric(names(which(table(x_list_tmp_level[cd_in])<2)))
@@ -1189,7 +1199,6 @@ while(min_p_less_bon5){
       x_list_tmp <- x_list_tmp[cd_in]
       y <- y[cd_in,]
     }
-    
     fit_tmp_0 <- rda(y~.,data=d_r2_tmp_0)
     fit_tmp_1 <- rda(y~.,data=d_r2_tmp_1)
     
@@ -1250,6 +1259,7 @@ while(min_p_less_bon5){
     r2_semipart_bootstrap_se = sqrt(sum((r2_bootstrap-mean(r2_bootstrap))^2)/(B-1))
     
     res_cd <- c(r2_semipart,r2_semipart_bootstrap_se,lrtest_p,perm_p,n)
+    
     print(res_cd)
     res_cd
   },mc.cores=2)
