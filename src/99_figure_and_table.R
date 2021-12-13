@@ -958,8 +958,8 @@ y0 <- apply(y0,2,function(yi){ yi-tapply(yi,batch,median)[batch] + median(yi)}) 
 a0s_totest <- setdiff(1:NCOL(res_r2_merged),a0s)
 
 res_r2_merged_semipart <- matrix(NA,5,85)
-for(ii in 2:85){
-  
+#for(ii in 2:85){
+for(ii in c(64:66,69)){
     print(ii)
     a0 <- ii
     x_list_tmp <- get_x_rdc_f(a0=a0,feature_order=feature_order,res_r2_merged=res_r2_merged)
@@ -1001,6 +1001,7 @@ for(ii in 2:85){
     
     ot_0_in <- apply(apply(as.matrix(cd_0),2,outliers::scores,type="chisq",prob=TRUE)<=0.9999,1,min)==1
     ot_1_in <- apply(apply(as.matrix(cd_1),2,outliers::scores,type="chisq",prob=TRUE)<=0.9999,1,min)==1
+    
     if(sum(is.na(ot_0_in))>length(ot_0_in)/2){
       ot_0_in[is.na(ot_0_in)] <- TRUE
     }
@@ -1013,90 +1014,90 @@ for(ii in 2:85){
     
     #idx_disc_n1 <- apply(d_r2_tmp_1[cd_in,],2,function(di){if(length(table(di))<=2){min(table(di))<2 || length(table(di))==1}else{FALSE}})
     if(class(x_list_tmp_level)=="factor"){
-      idx_disc_n1 <- sum(table(x_list_tmp_level[cd_in])>1)<2 
+      idx_disc_n1 <- sum(table(x_list_tmp_level[cd_in])>1)<2
+      levels_missed <- as.numeric(names(which(table(x_list_tmp_level[cd_in])<2)))
+      idx_disc_missed <- 1-!is.na(match(x_list_tmp_level,levels_missed)>0)
+      
     }else{
       idx_disc_n1 <- FALSE
     }
     
-    #if(sum(idx_disc_n1)>0){
-    # idx_disc_n1_add <- apply(d_r2_tmp_1[,idx_disc_n1,drop=FALSE],2,function(di){
-    #   di_tb <- table(di)
-    #   di <- 1 - (di == as.numeric(names(which(di_tb==min(di_tb)))))
-    #   do.call("order",data.frame(di,ot_1_sc,cd_1_sc))[1:2]
-    # })
-    #cd_in <- sort(unique(c(cd_in,unlist(idx_disc_n1_add)))) # patch remove no enought data; passed return NA NA p=1
     if(idx_disc_n1){
-      res_cd <- c(NA,NA,1,1,length(cd_in))
-    }else{
-      if(length(cd_in)>0){
-        d_r2_tmp_0 <- d_r2_tmp_0[cd_in,]
-        d_r2_tmp_1 <- d_r2_tmp_1[cd_in,]
-        x_list_tmp <- x_list_tmp[cd_in]
-        y <- y[cd_in,]
-      }
-      fit_tmp_0 <- rda(y~.,data=d_r2_tmp_0)
-      fit_tmp_1 <- rda(y~.,data=d_r2_tmp_1)
       
-      r2_0 <- RsquareAdj(fit_tmp_0)$r.squared
-      r2_1 <- RsquareAdj(fit_tmp_1)$r.squared
+      idx_disc_n1_add <- do.call("order",data.frame(idx_disc_missed,ot_1_sc,cd_1_sc))[1:2]
+      cd_in <- sort(unique(c(cd_in,unlist(idx_disc_n1_add)))) # patch remove no enought data; passed return NA NA p=1
       
-      parallel = 18
-      model = "direct"
-      nperm=1000000
-      
-      perm_p <- vegan::anova.cca(fit_tmp_0,fit_tmp_1,permutations = how(nperm=nperm),model=model,parallel=parallel)
-      
-      m <- perm_p$Df[2]
-      n <- NROW(d_r2_tmp_1)
-      
-      R2 <- r2_1-r2_0
-      r2_semipart = 1-(1-R2)*(n-1)/(n-m-1)
-      
-      perm_p <- perm_p $`Pr(>F)`[2]
-      
-      rda_res_mlm_1 <- as.mlm.rda(fit_tmp_1)[[1]]
-      
-      var_nms <- names(rda_res_mlm_1$model)
-      var_fll <- gsub("\\.[0-9]+$","",var_nms)
-      var_all <- unique(var_fll)
-      var_1 <- var_all[2:(length(var_all))]
-      var_0 <- var_all[2:(length(var_all)-1)]
-      
-      formula_1 <- paste0("WA ~ ",paste(var_nms[which(match(var_fll,var_1)>0)],collapse = "+"))
-      formula_0 <- paste0("WA ~ ",paste(var_nms[which(match(var_fll,var_0)>0)],collapse = "+"))
-      
-      rda_res_mlm_lm_1 <- lm(formula_1,rda_res_mlm_1$model)
-      rda_res_mlm_lm_0 <- lm(formula_0,rda_res_mlm_1$model)
-      
-      p <- stats::anova(rda_res_mlm_lm_1,rda_res_mlm_lm_0,test="Pillai")
-      lrtest_p <- p$`Pr(>F)`[2]
-      
-      B=200
-      
-      r2_bootstrap <- sapply(1:B,function(i){
-        dattype <- apply(d_r2_tmp_1,2,function(di){length(unique(di))==2})
-        if(length(which(dattype)>0)){
-          disc_strings <- apply(d_r2_tmp_1[,dattype,drop=FALSE],1,paste0,collapse="__")
-          balanced_resampling <- 1:NROW(disc_strings)
-          balanced_resampling <- tapply(balanced_resampling,disc_strings,function(iii){sample(as.character(iii),NROW(iii),replace = TRUE)})
-          balanced_resampling <- as.numeric(unlist(balanced_resampling))
-        }else{
-          balanced_resampling <- sample(1:NROW(d_r2_tmp_1),NROW(d_r2_tmp_1),replace = TRUE)
-        }
-        
-        fit_tmp_0_boot <- rda(y~.,data=d_r2_tmp_0[balanced_resampling,])
-        fit_tmp_1_boot <- rda(y~.,data=d_r2_tmp_1[balanced_resampling,])
-        r2_0_boot <- RsquareAdj(fit_tmp_0_boot)$r.squared
-        r2_1_boot <- RsquareAdj(fit_tmp_1_boot)$r.squared
-        r2_1_boot - r2_0_boot
-      })
-      r2_bootstrap <- 1-(1-r2_bootstrap)*(n-1)/(n-m-1)
-      r2_semipart_bootstrap_se = sqrt(sum((r2_bootstrap-mean(r2_bootstrap))^2)/(B-1))
-      
-      res_cd <- c(r2_semipart,r2_semipart_bootstrap_se,lrtest_p,perm_p,n)
     }
+    
+    if(length(cd_in)>0){
+      d_r2_tmp_0 <- d_r2_tmp_0[cd_in,]
+      d_r2_tmp_1 <- d_r2_tmp_1[cd_in,]
+      x_list_tmp <- x_list_tmp[cd_in]
+      y <- y[cd_in,]
+    }
+    fit_tmp_0 <- rda(y~.,data=d_r2_tmp_0)
+    fit_tmp_1 <- rda(y~.,data=d_r2_tmp_1)
+    
+    r2_0 <- RsquareAdj(fit_tmp_0)$r.squared
+    r2_1 <- RsquareAdj(fit_tmp_1)$r.squared
+    
+    parallel = 18
+    model = "direct"
+    nperm=1000000
+    
+    perm_p <- vegan::anova.cca(fit_tmp_0,fit_tmp_1,permutations = how(nperm=nperm),model=model,parallel=parallel)
+    
+    m <- perm_p$Df[2]
+    n <- NROW(d_r2_tmp_1)
+    
+    R2 <- r2_1-r2_0
+    r2_semipart = 1-(1-R2)*(n-1)/(n-m-1)
+    
+    perm_p <- perm_p $`Pr(>F)`[2]
+    
+    rda_res_mlm_1 <- as.mlm.rda(fit_tmp_1)[[1]]
+    
+    var_nms <- names(rda_res_mlm_1$model)
+    var_fll <- gsub("\\.[0-9]+$","",var_nms)
+    var_all <- unique(var_fll)
+    var_1 <- var_all[2:(length(var_all))]
+    var_0 <- var_all[2:(length(var_all)-1)]
+    
+    formula_1 <- paste0("WA ~ ",paste(var_nms[which(match(var_fll,var_1)>0)],collapse = "+"))
+    formula_0 <- paste0("WA ~ ",paste(var_nms[which(match(var_fll,var_0)>0)],collapse = "+"))
+    
+    rda_res_mlm_lm_1 <- lm(formula_1,rda_res_mlm_1$model)
+    rda_res_mlm_lm_0 <- lm(formula_0,rda_res_mlm_1$model)
+    
+    p <- stats::anova(rda_res_mlm_lm_1,rda_res_mlm_lm_0,test="Pillai")
+    lrtest_p <- p$`Pr(>F)`[2]
+    
+    B=200
+    
+    r2_bootstrap <- sapply(1:B,function(i){
+      dattype <- apply(d_r2_tmp_1,2,function(di){length(unique(di))==2})
+      if(length(which(dattype)>0)){
+        disc_strings <- apply(d_r2_tmp_1[,dattype,drop=FALSE],1,paste0,collapse="__")
+        balanced_resampling <- 1:NROW(disc_strings)
+        balanced_resampling <- tapply(balanced_resampling,disc_strings,function(iii){sample(as.character(iii),NROW(iii),replace = TRUE)})
+        balanced_resampling <- as.numeric(unlist(balanced_resampling))
+      }else{
+        balanced_resampling <- sample(1:NROW(d_r2_tmp_1),NROW(d_r2_tmp_1),replace = TRUE)
+      }
+      
+      fit_tmp_0_boot <- rda(y~.,data=d_r2_tmp_0[balanced_resampling,])
+      fit_tmp_1_boot <- rda(y~.,data=d_r2_tmp_1[balanced_resampling,])
+      r2_0_boot <- RsquareAdj(fit_tmp_0_boot)$r.squared
+      r2_1_boot <- RsquareAdj(fit_tmp_1_boot)$r.squared
+      r2_1_boot - r2_0_boot
+    })
+    r2_bootstrap <- 1-(1-r2_bootstrap)*(n-1)/(n-m-1)
+    r2_semipart_bootstrap_se = sqrt(sum((r2_bootstrap-mean(r2_bootstrap))^2)/(B-1))
+    
+    res_cd <- c(r2_semipart,r2_semipart_bootstrap_se,lrtest_p,perm_p,n)
+    
     print(res_cd)
-    res_r2_merged_semipart[,i] <- res_cd
+    res_r2_merged_semipart[,ii] <- res_cd
 }
 
 ### stepwise forward
@@ -1126,6 +1127,7 @@ while(min_p_less_bon5){
     print(ii)
     a0 <- ii
     x_list_tmp <- get_x_rdc_f(a0=a0,feature_order=feature_order,res_r2_merged=res_r2_merged)
+    x_list_tmp_level <- f_get_x(a0=a0,feature_order=feature_order,res_r2_mg=res_r2_merged)
     
     if(length(rownames(x_list_tmp))==0){
       rownames(x_list_tmp) <- 1:NROW(x_list_tmp)
@@ -1148,6 +1150,7 @@ while(min_p_less_bon5){
     idxna <- complete.cases(d_r2_tmp_1)
     d_r2_tmp_0 <- d_r2_tmp_0[idxna,,drop=FALSE]
     d_r2_tmp_1 <- d_r2_tmp_1[idxna,,drop=FALSE]
+    x_list_tmp_level <- x_list_tmp_level[idxna]
     
     y <- d_r2_tmp_0$y
     fit_tmp_0 <- rda(y~.,data=d_r2_tmp_0)
@@ -1164,12 +1167,29 @@ while(min_p_less_bon5){
     
     cd_in <- which((cd_0_in+cd_1_in+ot_0_in+ot_1_in)==4)
     
+    if(class(x_list_tmp_level)=="factor"){
+      idx_disc_n1 <- sum(table(x_list_tmp_level[cd_in])>1)<2
+      levels_missed <- as.numeric(names(which(table(x_list_tmp_level[cd_in])<2)))
+      idx_disc_missed <- 1-!is.na(match(x_list_tmp_level,levels_missed)>0)
+      
+    }else{
+      idx_disc_n1 <- FALSE
+    }
+    
+    if(idx_disc_n1){
+      
+      idx_disc_n1_add <- do.call("order",data.frame(idx_disc_missed,ot_1_sc,cd_1_sc))[1:2]
+      cd_in <- sort(unique(c(cd_in,unlist(idx_disc_n1_add)))) # patch remove no enought data; passed return NA NA p=1
+      
+    }
+    
     if(length(cd_in)>0){
       d_r2_tmp_0 <- d_r2_tmp_0[cd_in,]
       d_r2_tmp_1 <- d_r2_tmp_1[cd_in,]
       x_list_tmp <- x_list_tmp[cd_in]
       y <- y[cd_in,]
     }
+    
     fit_tmp_0 <- rda(y~.,data=d_r2_tmp_0)
     fit_tmp_1 <- rda(y~.,data=d_r2_tmp_1)
     
