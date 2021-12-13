@@ -1113,7 +1113,7 @@ batch <- d_kora_analysis[,"batch"]
 y0 <- d_kora_analysis[,tr]
 y0 <- apply(y0,2,function(yi){ yi-tapply(yi,batch,median)[batch] + median(yi)}) # median center
 
-res_r2_merged_semipart_FS_res <- matrix(NA,85,5)
+res_r2_merged_semipart_FS_res <- matrix(NA,85,6)
 
 
 while(min_p_less_bon5){
