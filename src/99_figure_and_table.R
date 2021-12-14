@@ -609,6 +609,157 @@ getresult.linearHypothesis.mlm <- function(x, SSP=TRUE, SSPE=SSP,
   tests
 }
 
+
+plot_biplot <- function (x, choices = c(1, 2), display = c("sp", "wa", "cn"), 
+                         scaling = "species", type, xlim, ylim, const, correlation = FALSE, 
+                         hill = FALSE, col_species,col_biplot,col_points_site_fill = rgb(0.5,0.5,0.5,0.5),
+                         xlim_force,
+                         ylim_force,
+                         mul_rescale=1,
+                         mul_rescale_biplot_label=1,...) {
+  TYPES <- c("text", "points", "none")
+  g <- scores(x, choices, display, scaling, const, correlation = correlation, 
+              hill = hill)
+  if (length(g) == 0 || all(is.na(g))) 
+    stop("nothing to plot: requested scores do not exist")
+  if (!is.list(g)) 
+    g <- list(default = g)
+  for (i in seq_along(g)) {
+    if (length(dim(g[[i]])) > 1) 
+      rownames(g[[i]]) <- rownames(g[[i]], do.NULL = FALSE, 
+                                   prefix = substr(names(g)[i], 1, 3))
+  }
+  if (!is.null(g$centroids)) {
+    if (is.null(g$biplot)) 
+      g$biplot <- scores(x, choices, "bp", scaling)
+    if (!is.na(g$centroids)[1]) {
+      bipnam <- rownames(g$biplot)
+      cntnam <- rownames(g$centroids)
+      g$biplot <- g$biplot[!(bipnam %in% cntnam), , drop = FALSE]
+      if (nrow(g$biplot) == 0) 
+        g$biplot <- NULL
+    }
+  }
+  if (missing(type)) {
+    nitlimit <- 80
+    nit <- max(nrow(g$spe), nrow(g$sit), nrow(g$con), nrow(g$def))
+    if (nit > nitlimit) 
+      type <- "points"
+    else type <- "text"
+  }
+  else type <- match.arg(type, TYPES)
+  if (length(choices) == 1) {
+    if (length(g) == 1) 
+      pl <- linestack(g[[1]], ...)
+    else {
+      hasSpec <- names(g)[1] == "species"
+      ylim <- range(c(g[[1]], g[[2]]), na.rm = TRUE)
+      pl <- linestack(g[[1]], ylim = ylim, side = ifelse(hasSpec, 
+                                                         "left", "right"), ...)
+      linestack(g[[2]], ylim = ylim, side = ifelse(hasSpec, 
+                                                   "right", "left"), add = TRUE, ...)
+    }
+    return(invisible(pl))
+  }
+  if (missing(xlim)) {
+    xlim <- range(g$species[, 1], g$sites[, 1], g$constraints[, 
+                                                              1], g$biplot[, 1], if (length(g$centroids) > 0 && 
+                                                                                     all(is.na(g$centroids))) NA else g$centroids[, 1], 
+                  g$default[, 1], na.rm = TRUE)
+  }
+  if (!any(is.finite(xlim))) 
+    stop("no finite scores to plot")
+  if (missing(ylim)) {
+    ylim <- range(g$species[, 2], g$sites[, 2], g$constraints[, 
+                                                              2], g$biplot[, 2], if (length(g$centroids) > 0 && 
+                                                                                     all(is.na(g$centroids))) NA else g$centroids[, 2], 
+                  g$default[, 2], na.rm = TRUE)
+  }
+  if(!missing(xlim_force)){
+    xlim = xlim_force
+  }
+  if(!missing(ylim_force)){
+    ylim = ylim_force
+  }
+  print(xlim)
+  print(ylim)
+  
+  plot(g[[1]], xlim = xlim, ylim = ylim, type = "n", asp = 1, 
+       ...)
+  abline(h = 0, lty = 3)
+  abline(v = 0, lty = 3)
+  if (!is.null(g$default) && type != "none") {
+    if (type == "text") 
+      text(g$default, rownames(g$default), cex = 0.5)
+    else if (type == "points") 
+      points(g$default, pch = 1, cex = 0.5)
+  }
+  if (!is.null(g$sites)) {
+    if (type == "text") 
+      text(g$sites, rownames(g$sites), cex = 0.5)
+    else if (type == "points"){
+      points(g$sites, pch=21,type="p",cex=0.7,bg=col_points_site_fill,col=rgb(0,0,0,0.5))
+    }
+  }
+  
+  if (!is.null(g$species)) {
+    if (type == "text") 
+      text(g$species, rownames(g$species), col = col_species, 
+           cex = 0.7)
+    else if (type == "points") 
+      points(g$species, pch = "+",  cex = 1, col=col_species)
+  }
+  
+  if (!is.null(g$constraints)) {
+    if (type == "text") 
+      text(g$constraints, rownames(g$constraints), cex = 0.7, 
+           col = "darkgreen")
+    else if (type == "points") 
+      points(g$constraints, pch = 2, cex = 0.7, col = "darkgreen")
+  }
+  if (!is.null(g$biplot) && nrow(g$biplot) > 0 && type != 
+      "none") {
+    if (length(display) > 1) {
+      mul <- ordiArrowMul(g$biplot)
+    }
+    else mul <- 1
+    mul <- mul*mul_rescale
+    attr(g$biplot, "arrow.mul") <- mul
+    arrows(0, 0, mul * g$biplot[, 1], mul * g$biplot[, 2], 
+           length = 0.05, col = col_biplot)
+    biplabs <- ordiArrowTextXY(mul * g$biplot , rownames(g$biplot))
+    text(biplabs*mul_rescale_biplot_label, rownames(g$biplot), col = col_biplot)
+  }
+  if (!is.null(g$regression) && nrow(g$regression > 0) && 
+      type != "none") {
+    rcol <- "purple4"
+    if (length(display) > 1) {
+      mul <- ordiArrowMul(g$regression)
+    }
+    else mul <- 1
+    attr(g$regression, "arrow.mul") <- mul
+    arrows(0, 0, mul * g$regression[, 1], mul * g$regression[, 
+                                                             2], length = 0.05, col = rcol)
+    biplabs <- ordiArrowTextXY(mul * g$regression, rownames(g$regression))
+    text(biplabs*mul_rescale_biplot_label, rownames(g$regression), col = rcol)
+  }
+  
+  if (!is.null(g$centroids) && all(!is.na(g$centroids)) && 
+      type != "none") {
+    if (type == "text") 
+      text(g$centroids, rownames(g$centroids), col = col_biplot)
+    else if (type == "points"){
+      #points(g$centroids, pch = 4, col = col_biplot)
+    }
+      
+    
+  }
+  
+  class(g) <- "ordiplot"
+  invisible(g)
+}
+
+
 cb_d <- function(range_res){
   write.table(range_res, "clipboard", sep="\t", row.names=FALSE, col.names=FALSE)
 }
@@ -627,6 +778,8 @@ library(corpcor)
 library(lmtest)
 library(outliers)
 library(parallel)
+library(magrittr)
+library(SIBER)
 library(vegan)
 library(candisc)
 
@@ -1272,9 +1425,463 @@ while(min_p_less_bon5){
   
 }
 
+# stepforward RDA
+
+feature_order2 <- read.table("../RLS_META_MG/feature_order.txt",header=TRUE,stringsAsFactors = F,sep="\t")
+
+tr <- c("MG","GO","DG3")
+batch <- d_kora_analysis[,"batch"]
+y0 <- d_kora_analysis[,tr]
+y0 <- apply(y0,2,function(yi){ yi-tapply(yi,batch,median)[batch] + median(yi)}) # median center
+y0 <- log2(y0)
+
+get_x_fillna_f <- function(a0,feature_order=feature_order,res_r2_mg=res_r2_mg){
+  fe <- feature_order[a0,2]
+  
+  x0 <- d_kora_analysis[,fe]
+  
+  type <- feature_order[a0,4]
+  trans <- res_r2_mg[1,a0]
+  
+  
+  if(grepl("_log",trans)){
+    if(min(x0,na.rm=T)<=0){
+      x0 <- x0 + min(x0,na.rm=T)+1
+    }
+    x0 <- log2(x0)
+    if(sum(is.na(x0))>0){x0[is.na(x0)] <- median(x0,na.rm=TRUE)}
+  }else if(grepl("_irn",trans)){
+    x0 <- irnt_f(x0)
+    if(sum(is.na(x0))>0){x0[is.na(x0)] <- median(x0,na.rm=TRUE)}
+  }else if(grepl("_raw",trans)){
+    if(sum(is.na(x0))>0){x0[is.na(x0)] <- median(x0,na.rm=TRUE)}
+  }
+  if(type!="continous"){
+    x0 <- as.numeric(x0)+2
+    min_1 <- min(x0,na.rm=TRUE)-1
+    if(sum(is.na(x0))>0){x0[is.na(x0)] <- min_1}
+    x0 <- as.factor(paste0("f_",x0))
+  }
+  x0
+}
+
+cutoff_at_FDR005 <- p.adjust(res_r2_merged_semipart_FS_res[-1,4],method="fdr")
+cutoff_at_FDR005 <- max(res_r2_merged_semipart_FS_res[-1,4][which(cutoff_at_FDR005<0.05)])
+
+# cutoff_at_FDR005 <- p.adjust(as.numeric(res_r2_merged[6,]),method="fdr")
+# cutoff_at_FDR005 <- max(as.numeric(res_r2_merged[6,])[which(cutoff_at_FDR005<0.05)])
+# a0s_fw_all <- c(which(as.numeric(res_r2_merged[6,])<cutoff_at_FDR005))
+
+# in pc
+# a0s_fw_all <-  c(which(as.numeric(res_r2_merged[6,])<0.05))
+
+a0s_fw_cond <- c(1,which(res_r2_merged_semipart_FS_res[,3]<0.1))
+a0s_fw_all <- c(1,which(res_r2_merged_semipart_FS_res[,4]<cutoff_at_FDR005))
+
+x_list_fillna_cond <- lapply(a0s_fw_cond,function(a0){
+  get_x_fillna_f(a0=a0,feature_order=feature_order,res_r2_mg=res_r2_merged)
+})
+
+x_list_fillna_all <- lapply(a0s_fw_all,function(a0){
+  get_x_fillna_f(a0=a0,feature_order=feature_order,res_r2_mg=res_r2_merged)
+})
+
+names(x_list_fillna_all) <- feature_order$raw_name[a0s_fw_all]
+d_kora_analysis_features <- data.frame(x_list_fillna_all)
+colnames(d_kora_analysis_features) <- feature_order$raw_name[a0s_fw_all]
+
+complete.cases(d_kora_analysis_features)
+
+d_kora_analysis_features$y0 <- y0
 
 
+rda_0 <- rda(y0 ~ utgfr_ckd_cr + utoc + utglukfast_a + utbmi + utmeddia, data=d_kora_analysis_features)
+rda_full <- rda(y0 ~ ., data=d_kora_analysis_features)
+
+anova(rda_full,by="margin")
+
+cd_full_0_sc <- cooks.distance(rda_full)
+cd_full_0_sc[is.na(cd_full_0_sc)] <- 0
+cd_full_0 <- apply(cd_full_0_sc,2,function(di){
+  otsc <- outliers::scores(di,type="mad",prob=TRUE)
+  di>4 | di==0 | outliers::scores(di,type="mad",prob=TRUE)>quantile(otsc,0.95) | is.na(di)
+})
+cd_full_0 <- rowSums(cd_full_0)==0
+
+y0_cd_0 <- y0[cd_full_0,]
+rda_0 <- rda(y0_cd_0 ~ utgfr_ckd_cr + utoc + utglukfast_a + utbmi + utmeddia, data=d_kora_analysis_features[cd_full_0,])
+rda_full <- rda(y0_cd_0 ~ ., data=d_kora_analysis_features[cd_full_0,])
+
+complete.cases(d_kora_analysis_features[cd_full_0,])
+
+
+step_both_P_full_2 <- ordistep(rda_0, scope = formula(rda_full), direction = "both", 
+                             Pin = 0.05,Pout = 0.1,permutations = how(nperm = 999),trace=TRUE,
+                             parallel = 18, model = "direct")
+
+step_both_P_full_2_P <- anova(step_both_P_full_2,by="margin",permutations = how(nperm = 49999),parallel = 18)
+
+
+### rda diagnosis
+
+step_both_P_full_2
+
+inertcomp(step_both_P_full_2,display = "sp",proportional = TRUE)
+
+
+# VIF<3
+sort(vif.cca(step_both_P_full_2))
+
+## plot biplot
+
+full_2_model <- "y0_cd_0 ~ utgfr_ckd_cr + utoc + utglukfast_a + utbmi + utmeddia + utrauchp + uthyact + ul_ggt"
+full_2_model_0 <- full_2_model
+
+model_both_P_full_0 <- rda(formula(full_2_model_0),d_kora_analysis_features[cd_full_0,])
+cd_full_1_sc <- cooks.distance(model_both_P_full_0)
+cd_full_1_sc[is.na(cd_full_1_sc)] <- 0
+cd_full_1 <- apply(cd_full_1_sc,2,function(di){
+  otsc <- outliers::scores(di,type="mad",prob=TRUE)
+  di>4 | di==0 | otsc>quantile(otsc,probs=0.975) | is.na(di)
+})
+cd_full_1 <- rowSums(cd_full_1)==0
+cd_full_1 <- !is.na(match(1:length(cd_full_0),which(cd_full_0)[cd_full_1]))
+sum(cd_full_1)
+
+y0_cd <- y0[cd_full_1,]
+full_2_model_0 <- "y0_cd ~ utgfr_ckd_cr + utoc + utglukfast_a + utbmi + utmeddia + utrauchp + uthyact + ul_ggt"
+y0_cd <- y0[cd_full_1,]
+model_both_P_full_2 <- rda(formula(full_2_model_0),d_kora_analysis_features[cd_full_1,])
+range(cooks.distance(model_both_P_full_2))
+
+pl <- plot(model_both_P_full_2,scaling = 2,xlim=c(-3,3),ylim=c(-3,3))
+pl_ell <- ordiellipse(model_both_P_full_2, rep(1,NROW(model_both_P_full_2$CCA$u)), label = FALSE,conf=0.9998,lty=3,scaling = 2 )
+pl_scores <- vegan::scores(model_both_P_full_2,display = "site",scaling = 2)
+Z_samp <- pointsToEllipsoid(pl_scores, mu = pl_ell$`1`$center, Sigma=pl_ell$`1`$cov)
+pl_ell_ot_idx <- which(!ellipseInOut(Z_samp, p = 1-pl_ell$`1`$wt[1]))
+
+sum(cd_full_1)
+cd_full_1[pl_ell_ot_idx] <- FALSE
+points(pl_scores[as.numeric(pl_ell_ot_idx),],cex=2,pch=19)
+sum(cd_full_1)
+cd_full_1[which(d_kora_analysis_features$utwhoish=="f_8")] <- FALSE
+
+# detect a extreme value for utwhoishf_8
+
+# loop_cd2 <- 0
+# while(length(pl_ell_ot_idx)>0){
+#   loop_cd2 <- loop_cd2 + 1
+#   print(loop_cd2)
+#   print(sum(cd_full_1))
+#   y0_cd <- y0[cd_full_1,]
+#   full_2_model_0 <- "y0_cd_0 ~ utgfr_ckd_cr + utoc + utglukfast_a + utbmi + utmeddia + utrauchp + ul_got + utwhoish + utmgicht + utdiamm + utmrelax + uv77a_2_1 + ua3_11 + utht"
+#   model_both_P_full_2 <- rda(formula(full_2_model),d_kora_analysis_features[cd_full_1,])
+#   pl_ell <- ordiellipse(model_both_P_full_2, rep(1,NROW(model_both_P_full_2$CCA$u)), label = FALSE,conf=0.9995,lty=3,scaling = 2 )
+#   pl_scores <- vegan::scores(model_both_P_full_2,display = "site",scaling = 2)
+#   Z_samp <- pointsToEllipsoid(pl_scores, mu = pl_ell$`1`$center, Sigma=pl_ell$`1`$cov)
+#   pl_ell_ot_idx <- which(!ellipseInOut(Z_samp, p = 1-pl_ell$`1`$wt[1]))
+#   cd_full_1[pl_ell_ot_idx] <- FALSE
+# }
+
+full_2_model_0 <- "y0_cd ~ utgfr_ckd_cr + utoc + utglukfast_a + utbmi + utmeddia + utrauchp + uthyact + ul_ggt"
+
+y0_cd <- y0[cd_full_1,]
+model_both_P_full_2 <- rda(formula(full_2_model_0),d_kora_analysis_features[cd_full_1,])
+range(cooks.distance(model_both_P_full_2))
+
+conf = 1-0.05/400
+
+pl <- plot(model_both_P_full_2,scaling = 2,xlim=c(-3,3),ylim=c(-3,3))
+pl_ell <- ordiellipse(model_both_P_full_2, rep(1,NROW(model_both_P_full_2$CCA$u)), label = FALSE,conf=conf,lty=3,scaling = 2 )
+pl_scores <- vegan::scores(model_both_P_full_2,display = "site",scaling = 2)
+Z_samp <- pointsToEllipsoid(pl_scores, mu = pl_ell$`1`$center, Sigma=pl_ell$`1`$cov)
+pl_ell_ot_idx <- which(!ellipseInOut(Z_samp, p = 1-pl_ell$`1`$wt[1]))
+
+
+
+loop_cd2 <- 0
+while(max(cooks.distance(model_both_P_full_2))>4 | loop_cd2==0){
+  print(loop_cd2)
+  loop_cd2 <- loop_cd2+1
+  cd_full_2_sc <- cooks.distance(model_both_P_full_2)
+  cd_full_2_sc[is.na(cd_full_2_sc)] <- 0
+  cd_full_2 <- apply(cd_full_2_sc,2,function(di){
+    otsc <- outliers::scores(di,type="mad",prob=TRUE)
+    di>4 | di==0 | otsc>max(quantile(otsc,probs=0.975),0.9999) | is.na(di)
+  })
+  cd_full_2 <- rowSums(cd_full_2)==0
+  cd_full_2 <- !is.na(match(1:length(cd_full_0),which(cd_full_1)[cd_full_2]))
+  sum(cd_full_2)
+  
+  y0_cd <- y0[cd_full_2,]
+  full_2_model_0 <- "y0_cd ~ utgfr_ckd_cr + utoc + utglukfast_a + utbmi + utmeddia + utrauchp + uthyact + ul_ggt"
+  y0_cd <- y0[cd_full_2,]
+  model_both_P_full_2 <- rda(formula(full_2_model_0),d_kora_analysis_features[cd_full_2,])
+  cd_full_1 <- cd_full_2
+}
+
+sum(cd_full_2)
+
+pl <- plot(model_both_P_full_2,scaling = 2,xlim=c(-3,3),ylim=c(-3,3))
+pl_ell <- ordiellipse(model_both_P_full_2, rep(1,NROW(model_both_P_full_2$CCA$u)), label = FALSE,conf=conf,lty=3,scaling = 2 )
+pl_scores <- vegan::scores(model_both_P_full_2,display = "site",scaling = 2)
+Z_samp <- pointsToEllipsoid(pl_scores, mu = pl_ell$`1`$center, Sigma=pl_ell$`1`$cov)
+pl_ell_ot_idx <- which(!ellipseInOut(Z_samp, p = 1-pl_ell$`1`$wt[1]))
+points(pl_scores[as.numeric(pl_ell_ot_idx),],cex=2,pch=19)
+
+
+model_both_P_full_P <- anova(model_both_P_full_2,by="margin",permutations = how(maxperm = 99999,nperm=3999))
+model_both_P_full_P
+
+cd_full_2_max <- apply(cooks.distance(model_both_P_full_2),1,max)
+
+fixInNamespace(plot.cca,ns = "vegan")
+
+anova_cont_p <- model_both_P_full_P$`Pr(>F)`[1:(NROW(model_both_P_full_P)-1)] 
+anova_cont_names <- rownames(model_both_P_full_P)[1:(NROW(model_both_P_full_P)-1)]
+col_biplot <- as.numeric(cut(anova_cont_p,breaks = c(0,1e-4,1e-3,1e-2,0.05)))
+col_biplot <- colorRampPalette(c("darkblue","lightblue"),alpha=1)(4)[col_biplot]
+names(col_biplot) <- anova_cont_names
+
+library(shape)
+
+pl <- plot(model_both_P_full_2)
+
+pdf("rda_biplot_raw_scale2.pdf",height=5,width=5)
+
+scaling = 2
+pl <- plot_biplot(model_both_P_full_2, scaling=scaling, xlim=c(-2,2),ylim=c(-2,2),
+                  col_specie=rgb(0.5,0.5,0.5,0),
+                  col_biplot = col_biplot[gsub("f_[0-9]+$","",rownames(pl$biplot))],
+                  col_points_site_fill = rgb(0.5,0.5,0.5,0.5))
+
+#pl <- plot(model_both_P_full_2, scaling=2, xlim=c(-2,2),ylim=c(-1.5,1.5),type="n")
+#pl <- plot(model_both_P_full_2, scaling=2, type="n")
 #
+spe2.sc <- scores(model_both_P_full_2, scaling = scaling, choices=1:2, display="sp")
+arrows(0,0,spe2.sc[,1], spe2.sc[,2], length=0, lty=1, col='darkred')
+points(spe2.sc[,1], spe2.sc[,2],pch=3,cex=0.7,col='darkred')
+
+text(spe2.sc[,1], spe2.sc[,2], labels = rownames(spe2.sc),adj = c(-0.2, NA),cex=0.8,col="darkred")
+
+spe2.ce <- pl$centroids
+spe2.ce_names <- gsub("f_[0-9]+$","",rownames(pl$centroids))
+
+spe2.ce_col <- col_biplot[match(spe2.ce_names,anova_cont_names)]
+points(spe2.ce[,1], spe2.ce[,2],pch=4,cex=1.5,col=spe2.ce_col,lwd=1.5)
+spe2.ce_p <- anova_cont_p[match(spe2.ce_names,anova_cont_names)]
+text(spe2.ce[spe2.ce_p<0.001,1], spe2.ce[spe2.ce_p<0.001,2],labels = rownames(pl$centroids)[spe2.ce_p<0.001],
+     col=spe2.ce_col[spe2.ce_p<0.001])
+spe2.ce_w <- apply(spe2.ce,1,function(di)sum(di^2))
+spe2.ce_w_show <- spe2.ce_w>0.1
+text(spe2.ce[spe2.ce_w_show,1], spe2.ce[spe2.ce_w_show,2],
+     labels = rownames(pl$centroids)[spe2.ce_w_show],
+     col=spe2.ce_col[spe2.ce_w_show])
+
+ordiellipse(model_both_P_full_2, rep(1,sum(cd_full_2)), label = FALSE,conf=conf,lty=3,scaling = scaling )
+
+dev.off()
+
+pdf("rda_biplot_raw_scale1.pdf",height=5,width=5)
+
+scaling = 1
+pl <- plot_biplot(model_both_P_full_2, scaling=scaling, 
+                  xlim_force=c(-0.8,0.8),
+                  ylim_force=c(-0.8,0.8),
+                  col_specie=rgb(0.5,0.5,0.5,0),
+                  col_biplot = col_biplot[gsub("f_[0-9]+$","",rownames(pl$biplot))],
+                  col_points_site_fill = rgb(0.5,0.5,0.5,0.5),
+                  mul_rescale = 1,
+                  mul_rescale_biplot_label = 1)
+#pl <- plot(model_both_P_full_2, scaling=2, xlim=c(-2,2),ylim=c(-1.5,1.5),type="n")
+#pl <- plot(model_both_P_full_2, scaling=2, type="n")
+#
+spe2.sc <- scores(model_both_P_full_2, scaling = scaling, choices=1:2, display="sp")*0.25
+arrows(0,0,spe2.sc[,1], spe2.sc[,2], length=0, lty=1, col='darkred')
+points(spe2.sc[,1], spe2.sc[,2],pch=3,cex=0.7,col='darkred')
+
+text(spe2.sc[,1], spe2.sc[,2], labels = rownames(spe2.sc),adj = c(-0.2, NA),cex=0.8,col=col_biplot)
+
+
+spe2.ce <- pl$centroids
+spe2.ce_names <- gsub("f_[0-9]+$","",rownames(pl$centroids))
+
+spe2.ce_col <- col_biplot[match(spe2.ce_names,anova_cont_names)]
+points(spe2.ce[,1], spe2.ce[,2],pch=4,cex=1.5,col=spe2.ce_col,lwd=1.5)
+# spe2.ce_p <- anova_cont_p[match(spe2.ce_names,anova_cont_names)]
+# text(spe2.ce[spe2.ce_p<0.001,1], spe2.ce[spe2.ce_p<0.001,2],labels = rownames(pl$centroids)[spe2.ce_p<0.001],
+#      col=spe2.ce_col[spe2.ce_p<0.001])
+# spe2.ce_w <- apply(spe2.ce,1,function(di)sum(di^2))
+# spe2.ce_w_show <- spe2.ce_w>0.1
+# text(spe2.ce[spe2.ce_w_show,1], spe2.ce[spe2.ce_w_show,2],
+#      labels = rownames(pl$centroids)[spe2.ce_w_show],
+#      col=spe2.ce_col[spe2.ce_w_show])
+
+ordiellipse(model_both_P_full_2, rep(1,sum(cd_full_2)), label = FALSE,conf=conf,lty=3,scaling = scaling )
+
+dev.off()
+
+
+# bip <- scores(model_both_P_full_2, choices = 1:2, scale= 2, display = "bp")
+# (mul <- ordiArrowMul(bip, fill = 0.75))
+# bip.scl <- bip * mul                    # Scale the biplot scores
+# labs <- rownames(bip)
+# 
+# (bip.lab <- ordiArrowTextXY(bip.scl, rescale = FALSE, labels = labs))
+# 
+# ## draw arrows and text labels
+# arrows(0, 0, bip.scl[,1], bip.scl[,2], length = 0.1,color="red")
+# text(bip.lab, labels = labs)
+# 
+# 
+# arrows(0,0,pl$biplot[,1],pl$biplot[,2],length=0, lty=1, col='darkblue')
+
+RsquareAdj(model_both_P_full_2)
+
+library(ggord)
+ggord(model_both_P_full_2) + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+
+model_both_P_full_2_raw <- model_both_P_full_2
+anova_raw <- anova(model_both_P_full_2_raw,by="margin",permutations = how(maxperm = 99999,nperm=9999))
+pl_2_raw <- pl
+
+# figure in continous trasformed 
+
+
+full_2_model<- "y0_cd ~ utgfr_ckd_cr + utoc + utglukfast_a + utbmi + utmeddia + utrauchp + uthyact + ul_ggt"
+full_2_model_0 <- "y0_cd ~ utgfr_ckd_cr + utoc + utglukfast_a + utbmi + utmeddia + utrauchp + uthyact + ul_ggt"
+
+d_kora_analysis_features_numeric <- data.frame(lapply(d_kora_analysis_features[,1:82],function(x)scale(as.numeric(gsub("f_","",x)))))
+d_kora_analysis_features_numeric$utoc <- d_kora_analysis_features$utoc
+d_kora_analysis_features_numeric$utoc <- as.character(d_kora_analysis_features$utoc)
+d_kora_analysis_features_numeric$utoc[d_kora_analysis_features_numeric$utoc=="f_4"] <- "f_1"
+d_kora_analysis_features_numeric$utoc <- scale(as.numeric(gsub("f_","",d_kora_analysis_features_numeric$utoc)))
+model_both_P_full_2 <- rda(formula(full_2_model),d_kora_analysis_features_numeric[cd_full_2,],scale=FALSE)
+model_both_P_full_0 <- rda(y0_cd ~ 1, d_kora_analysis_features_numeric[cd_full_2,],scale=FALSE)
+
+step_both_P_full_cont <- ordistep(model_both_P_full_0, scope = formula(model_both_P_full_2), direction = "both", 
+                                  Pin = 0.001,Pout = 0.1,permutations = how(nperm = 5000),trace=TRUE, model = "direct")
+
+anova_cont <- anova(step_both_P_full_cont,by="margin",permutations = how(maxperm = 99999,nperm=50000))
+cd_full_2_max <- apply(cooks.distance(model_both_P_full_2),1,max)
+
+
+
+anova_cont <- anova(model_both_P_full_2,by="margin",permutations = how(maxperm = 99999,nperm=50000))
+anova_cont_p <- anova_cont$`Pr(>F)`[-NROW(anova_cont)]
+
+full_2_model<- "y0_cd ~ utgfr_ckd_cr + utoc + utglukfast_a + utbmi + utmeddia + utrauchp + uthyact + ul_ggt"
+
+d_kora_analysis_features_numeric <- data.frame(lapply(d_kora_analysis_features[,1:82],function(x)scale(as.numeric(gsub("f_","",x)))))
+d_kora_analysis_features_numeric$utoc <- d_kora_analysis_features$utoc
+d_kora_analysis_features_numeric$utoc <- as.character(d_kora_analysis_features$utoc)
+d_kora_analysis_features_numeric$utoc[d_kora_analysis_features_numeric$utoc=="f_4"] <- "f_1"
+d_kora_analysis_features_numeric$utoc <- scale(as.numeric(gsub("f_","",d_kora_analysis_features_numeric$utoc)))
+
+model_both_P_full_2 <- rda(formula(full_2_model),d_kora_analysis_features_numeric[cd_full_2,],scale=FALSE)
+
+anova_cont <- anova(model_both_P_full_2,by="margin",permutations = how(maxperm = 99999,nperm=50000))
+anova_cont_p <- anova_cont$`Pr(>F)`[-NROW(anova_cont)]
+model_both_P_full_P <- anova_cont
+model_both_P_full_P
+
+anova_cont_p <- model_both_P_full_P$`Pr(>F)`[1:(NROW(model_both_P_full_P)-1)] 
+anova_cont_names <- rownames(model_both_P_full_P)[1:(NROW(model_both_P_full_P)-1)]
+col_biplot <- as.numeric(cut(anova_cont_p,breaks = c(0,1e-4,1e-3,1e-2,0.05)))
+col_biplot <- colorRampPalette(c("darkblue","lightblue"),alpha=1)(4)[col_biplot]
+names(col_biplot) <- anova_cont_names
+
+library(shape)
+
+pdf("rda_biplot_con_scale2.pdf",height=5,width=5)
+
+#scores <- function(...){-scores(...)}
+
+scaling = 2
+pl <- plot_biplot(model_both_P_full_2, scaling=scaling, xlim = c(-3,3),ylim=c(-2.2,2.2),
+                  col_specie=rgb(0.5,0.5,0.5,0),
+                  col_biplot = col_biplot[gsub("f_[0-9]+$","",rownames(pl$biplot))],
+                  col_points_site_fill = rgb(0.5,0.5,0.5,0.5),
+                  mul_rescale = 0.8,
+                  mul_rescale_biplot_label = 0.8
+                  )
+#pl <- plot(model_both_P_full_2, scaling=2, xlim=c(-2,2),ylim=c(-1.5,1.5),type="n")
+#pl <- plot(model_both_P_full_2, scaling=2, type="n")
+#
+spe2.sc <- scores(model_both_P_full_2, scaling = scaling, choices=1:2, display="sp")
+spe2.sc <- spe2.sc*2
+arrows(0,0,spe2.sc[,1], spe2.sc[,2], length=0, lty=1, col='darkred')
+points(spe2.sc[,1], spe2.sc[,2],pch=3,cex=0.7,col='darkred')
+
+text(spe2.sc[,1], spe2.sc[,2], labels = rownames(spe2.sc),adj = c(-0.2, NA),cex=0.8,col="darkred")
+
+ordiellipse(model_both_P_full_2, rep(1,sum(cd_full_2)), label = FALSE,conf=conf,lty=3,scaling = scaling )
+
+dev.off()
+
+pdf("rda_biplot_con_scale1.pdf",height=5,width=5)
+
+scaling = 1
+pl <- plot_biplot(model_both_P_full_2, scaling=scaling, 
+                  xlim_force=c(-0.8,0.8),
+                  ylim_force=c(-0.8,0.8),
+                  col_specie=rgb(0.5,0.5,0.5,0),
+                  col_biplot = col_biplot[gsub("f_[0-9]+$","",rownames(pl$biplot))],
+                  col_points_site_fill = rgb(0.5,0.5,0.5,0.5),
+                  mul_rescale = 1,
+                  mul_rescale_biplot_label = 1)
+#pl <- plot(model_both_P_full_2, scaling=2, xlim=c(-2,2),ylim=c(-1.5,1.5),type="n")
+#pl <- plot(model_both_P_full_2, scaling=2, type="n")
+#
+spe2.sc <- scores(model_both_P_full_2, scaling = scaling, choices=1:2, display="sp")*0.25
+arrows(0,0,spe2.sc[,1], spe2.sc[,2], length=0, lty=1, col='darkred')
+points(spe2.sc[,1], spe2.sc[,2],pch=3,cex=0.7,col='darkred')
+
+text(spe2.sc[,1], spe2.sc[,2], labels = rownames(spe2.sc),adj = c(-0.2, NA),cex=0.8,col="darkred")
+
+ordiellipse(model_both_P_full_2, rep(1,sum(cd_full_2)), label = FALSE,conf=conf,lty=3,scaling = scaling )
+
+dev.off()
+
+
+RsquareAdj(model_both_P_full_2)
+
+library(ggord)
+ggord(model_both_P_full_2) + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+
+vif.cca(model_both_P_full_2)
+
+###
+
+# individual figure
+
+boxplot(d_kora_analysis_features$y0[,"MG"]~d_kora_analysis_features$utoc)
+anova(lm(d_kora_analysis_features$y0[,"MG"]~d_kora_analysis_features$utoc))
+
+
+##
+
+
+step_both_P <- ordistep(rda_0, scope = formula(rda_1), direction = "both", 
+                        Pin = 0.05,Pout = 0.1,permutations = how(nperm = 999),trace=TRUE,
+                        parallel = 18, model = "direct")
+
+
+step_both_R2 <- ordiR2step(rda_0, scope = formula(rda_1), direction = "both", R2scope = TRUE,
+                        Pin = 0.05,Pout = 0.1,
+                        R2permutations = 1000,
+                        permutations = how(nperm = 999),
+                        trace=TRUE,
+                        parallel = 18, model = "direct")
+
+# group traits
+
+table(feature_order2$cat1)
+g1 <- "Kidney function"
+
+a0s <- feature_order2[feature_order2$cat1==g1,1]
+
+
 
 
 #
