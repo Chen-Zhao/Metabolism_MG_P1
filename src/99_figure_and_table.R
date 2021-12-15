@@ -1855,9 +1855,250 @@ vif.cca(model_both_P_full_2)
 
 # individual figure
 
+
 boxplot(d_kora_analysis_features$y0[,"MG"]~d_kora_analysis_features$utoc)
 anova(lm(d_kora_analysis_features$y0[,"MG"]~d_kora_analysis_features$utoc))
 
+# association plot
+
+feature_order2 <- read.table("../RLS_META_MG/feature_order.txt",header=TRUE,stringsAsFactors = F,sep="\t")
+
+exclude <- "Age"
+idx_exclude_in <- which(!is.na(match(feature_order2$name,exclude)))
+
+feature_order2_in <- feature_order2[-idx_exclude_in,]
+
+pdf("assoc_plot_mg.pdf",height=9,width=6)
+mg_name_loc <- f_assoc_plot(feature_order2_in,t(res_r2_mg_outcome[,-idx_exclude_in]))
+dev.off()
+
+pdf("assoc_plot_go.pdf",height=9,width=6)
+go_name_loc <- f_assoc_plot(feature_order2_in,t(res_r2_go_outcome[,-idx_exclude_in]))
+dev.off()
+
+
+pdf("assoc_plot_dg3.pdf",height=9,width=6)
+dg3_name_loc <- f_assoc_plot(feature_order2_in,t(res_r2_dg3_outcome[,-idx_exclude_in]))
+dev.off()
+
+pdf("assoc_plot_merged.pdf",height=9,width=6)
+merge_name_loc <- f_assoc_plot(feature_order2_in=feature_order2_in,
+                               data_in=t(res_r2_merged_outcome[,-idx_exclude_in]),legend_p=TRUE)
+dev.off()
+
+assoc_plot_data_FS_mg <- read.table("assoc_plot_mg_data_semipartial_FS.txt",header=T,sep="\t")
+pdf("assoc_plot_mg_fs.pdf",height=9,width=6)
+mg_name_loc_fs <- f_assoc_plot(feature_order2_in=feature_order2_in,
+                               data_in = assoc_plot_data_FS_mg[-idx_exclude_in,c(1,1:2,3,3:5)],
+                               legend_p=TRUE,
+                               r2adj=FALSE)
+dev.off()
+
+assoc_plot_data_FS_go <- read.table("assoc_plot_go_data_semipartial_FS.txt",header=T,sep="\t")
+pdf("assoc_plot_go_fs.pdf",height=9,width=6)
+go_name_loc_fs <- f_assoc_plot(feature_order2_in=feature_order2_in,
+                               data_in = assoc_plot_data_FS_go[-idx_exclude_in,c(1,1:2,3,3:5)],
+                               legend_p=TRUE,
+                               r2adj=FALSE)
+dev.off()
+
+assoc_plot_data_FS_dg3 <- read.table("assoc_plot_dg3_data_semipartial_FS.txt",header=T,sep="\t")
+pdf("assoc_plot_dg3_fs.pdf",height=9,width=6)
+dg3_name_loc_fs <- f_assoc_plot(feature_order2_in=feature_order2_in,
+                               data_in = assoc_plot_data_FS_dg3[-idx_exclude_in,c(1,1:2,3,3:5)],
+                               legend_p=TRUE,
+                               r2adj=FALSE)
+dev.off()
+
+assoc_plot_data_FS_merge <- read.table("assoc_plot_merge_data_semipartial_FS.txt",header=T,sep="\t")
+pdf("assoc_plot_merged_fs.pdf",height=9,width=6)
+merge_name_loc_fs <- f_assoc_plot(feature_order2_in=feature_order2_in,
+                               data_in=assoc_plot_data_FS_merge[-idx_exclude_in,c(1,1:2,3,3:5)],
+                               legend_p=TRUE,
+                               r2adj=FALSE)
+dev.off()
+
+
+f_assoc_plot <- function(feature_order2_in,data_in,legend_p=FALSE,r2adj=TRUE){
+  
+  idx_class <- do.call("order",feature_order2_in[,c("cat1","raw_name")])
+  x_loc <- 1:NROW(feature_order2_in)
+  x_loc_group <- as.numeric(as.factor(feature_order2_in[idx_class,c("cat1")]))
+  x_loc <- x_loc + x_loc_group*5
+  x_loc_col <- c("darkblue","lightblue")[x_loc_group%%2+1]
+  
+  x_loc_cat_at <- tapply(x_loc,x_loc_group,median)
+  x_loc_cat_label <- unique(feature_order2_in[idx_class,c("cat1")])
+  x_loc_cat_name <- unique(feature_order2_in[idx_class,c("name")])
+  
+  x_loc_cat_label[grep("Neurode",x_loc_cat_label)] <- "Neurological disorder"
+  x_loc_cat_label[grep("Cholesterol and triglycerides",x_loc_cat_label)] <- "Cholesterol and \n triglycerides"
+  
+  p <- as.numeric(data_in[idx_class,5])
+  #p_adj005 <- max(p[p.adjust(p,method = "bonferroni")<0.05])
+  p_adj005 <- 0.05/85
+  
+  x_loc_names_idx <- tapply(1:NROW(p),x_loc_group,function(ti){
+    ti[which.min(p[ti])]
+  })
+  
+  x_loc_name_p <- p[x_loc_names_idx]
+  x_loc_name_at <- x_loc[x_loc_names_idx][x_loc_name_p<p_adj005]
+  x_loc_name_label <- x_loc_cat_name[x_loc_names_idx][x_loc_name_p<p_adj005]
+  
+  r2 <- as.numeric(data_in[idx_class,2])
+  if(r2adj){
+    r2_n <- as.numeric(data_in[idx_class,6])
+    adj_r2 <- 1-(1-r2)*(r2_n-1)/(r2_n-1-1)
+  }else{
+    adj_r2 <- r2
+  }
+  
+  p_r2_size <- as.numeric(cut(r2, breaks = c(-1,0.05,0.1,0.2,0.3,0.6,1)))/4+0.5
+  
+  par(mar=c(4,10,4,10))
+  plot(-log10(p),
+       x_loc,
+       ylim = range(x_loc)[2:1],
+       pch = 21,
+       cex = p_r2_size,
+       bg = x_loc_col,
+       axes=FALSE,xlab="-log10 p-value",ylab="")
+  
+  axis(2,x_loc_cat_at,x_loc_cat_label,las=1)
+  axis(4,x_loc_name_at,x_loc_name_label,las=1)
+  
+  axis(1)
+  box()
+  abline(v=-log10(p_adj005),lty=3)
+  if(legend_p){
+    legend("topright",legend = c("(0,0.05]","(0.05,0.1]","(0.1,0.2]","(0.2,0.3]","(0.3,0.6]","(0.6,1]"),
+           pch=21,
+           pt.cex=1:6/4+0.5,
+           bg="white",
+           bty = "n")
+  }
+  x_loc_name_at
+}
+
+## individual trait plot
+
+res_r2_list <- list(res_r2_mg,res_r2_go,res_r2_dg3)
+
+fi_to_plot <- "utgfr_ckd_cr"
+fi_to_plot <- "ul_hbava"
+jitter_mod = TRUE
+jitter_factor = 15
+fi_to_plot <- "utwhrat"
+jitter_mod = FALSE
+fi_to_plot <- "utglukfast_a"
+jitter_mod = TRUE
+jitter_factor = 15
+fi_to_plot <- "utsysmm"
+jitter_mod = FALSE
+fi_to_plot <- "utdiamm"
+jitter_mod = FALSE
+fi_to_plot <- "uh_eisen"
+jitter_mod = FALSE
+fi_to_plot <- "uh_ferri"
+jitter_mod = FALSE
+fi_to_plot <- "ul_gpt"
+jitter_mod = FALSE
+fi_to_plot <- "ul_got"
+jitter_mod = TRUE
+jitter_factor = 15
+fi_to_plot <- "ul_ggt"
+jitter_mod = TRUE
+jitter_factor = 15
+fi_to_plot <- "ul_hdla"
+jitter_mod = TRUE
+jitter_factor = 15
+
+
+
+a0 <- which(feature_order$raw_name==fi_to_plot)
+fi_dtype <- rbind(res_r2_mg[,a0],res_r2_go[,a0],res_r2_dg3[,a0])
+fi_dtype_min <- which.min(as.numeric(fi_dtype[,5]))
+di_to_plot <- f_get_x(a0 = a0,feature_order = feature_order,res_r2_mg = res_r2_list[[fi_dtype_min]])
+
+fi_dtype
+
+fi_col <- rep("grey",3)
+fi_col[as.numeric(fi_dtype[,5])<0.05] <- "lightblue"
+fi_col[as.numeric(fi_dtype[,5])<0.05/485] <- "darkblue"
+
+di_mg <- log2(d_kora_analysis$MG)
+di_go <- log2(d_kora_analysis$GO)
+di_dg3 <- log2(d_kora_analysis$DG3)
+
+di_major <- list(di_mg,di_go,di_dg3)[[fi_dtype_min]]
+
+ylab = fi_dtype[fi_dtype_min,1]
+ylab = gsub("log_","",ylab)
+
+idx_rm_na <- complete.cases(cbind(di_major,di_to_plot,di_mg,di_go,di_dg3))
+
+di_mg <- di_mg[idx_rm_na]
+di_go <- di_go[idx_rm_na]
+di_dg3 <- di_dg3[idx_rm_na]
+di_major <- di_major[idx_rm_na]
+
+di_to_plot <- di_to_plot[idx_rm_na]
+par(mfrow=c(1,1))
+plot(di_major,di_to_plot)
+
+idx_rm_1 <- f_model_cd_residul_outlier_conti(di_major,di_to_plot)
+idx_rm_2 <- f_model_cd_residul_outlier_conti(di_to_plot,di_major)
+idx_rm_3 <- outliers::scores(di_major,type = "chisq",prob = 1-0.05/483)
+idx_rm_4 <- outliers::scores(di_to_plot,type = "chisq",prob = 1-0.05/483)
+idx_rm_5 <- outliers::scores(di_mg,type = "chisq",prob = 1-0.05/483)
+idx_rm_6 <- outliers::scores(di_go,type = "chisq",prob = 1-0.05/483)
+idx_rm_7 <- outliers::scores(di_dg3,type = "chisq",prob = 1-0.05/483)
+
+idx_rm <- idx_rm_1 | idx_rm_2 | idx_rm_3 | idx_rm_4 | idx_rm_5 | idx_rm_6 | idx_rm_7
+sum(idx_rm)
+
+li_major <- lm(di_major[!idx_rm]~di_to_plot[!idx_rm])
+summary(li_major)
+
+li_mg <- lm(di_mg[!idx_rm]~di_to_plot[!idx_rm])
+summary(li_mg)
+li_go <- lm(di_go[!idx_rm]~di_to_plot[!idx_rm])
+summary(li_go)
+li_dg3 <- lm(di_dg3[!idx_rm]~di_to_plot[!idx_rm])
+summary(li_dg3)
+
+if(jitter_mod){
+  di_to_plot <- jitter(di_to_plot,factor = jitter_factor)
+}
+
+par(mfrow=c(1,3))
+
+par(mar=c(4,2,4,1))
+plot(di_mg[!idx_rm],di_to_plot[!idx_rm],pch=19,cex=.7,col=fi_col[1],ylab=ylab)
+par(mar=c(4,1,4,2))
+plot(di_go[!idx_rm],di_to_plot[!idx_rm],pch=19,cex=.7,col=fi_col[2],ylab="")
+par(mar=c(4,0,4,3))
+plot(di_dg3[!idx_rm],di_to_plot[!idx_rm],pch=19,cex=.7,col=fi_col[3],ylab="")
+
+ylab
+
+
+#lines(loess(di_to_plot[!idx_rm]~di_mg[!idx_rm],span = 1.5))
+
+
+f_model_cd_residul_outlier_conti <- function(di_mg,di_to_plot){
+  lm_tmp <- lm(di_mg~di_to_plot)
+  lm_cd <- cooks.distance(lm_tmp)
+  lm_rs <- resid(lm_tmp)
+  lm_cd_idx <- outliers::scores(lm_cd,type = "chisq",prob = 1-0.05/483)
+  lm_rs_idx <- outliers::scores(lm_rs,type = "chisq",prob = 1-0.05/483)
+  lm_cd_idx | lm_rs_idx
+}
+
+
+
+plot(di_mg,di_to_plot)
 
 ##
 
@@ -1875,6 +2116,8 @@ step_both_R2 <- ordiR2step(rda_0, scope = formula(rda_1), direction = "both", R2
                         parallel = 18, model = "direct")
 
 # group traits
+
+feature_order2 <- read.table("../RLS_META_MG/feature_order.txt",header=TRUE,stringsAsFactors = F,sep="\t")
 
 table(feature_order2$cat1)
 g1 <- "Kidney function"
