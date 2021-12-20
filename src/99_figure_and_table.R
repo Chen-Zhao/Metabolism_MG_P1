@@ -1855,7 +1855,6 @@ vif.cca(model_both_P_full_2)
 
 # individual figure
 
-
 boxplot(d_kora_analysis_features$y0[,"MG"]~d_kora_analysis_features$utoc)
 anova(lm(d_kora_analysis_features$y0[,"MG"]~d_kora_analysis_features$utoc))
 
@@ -1917,7 +1916,6 @@ merge_name_loc_fs <- f_assoc_plot(feature_order2_in=feature_order2_in,
                                legend_p=TRUE,
                                r2adj=FALSE)
 dev.off()
-
 
 f_assoc_plot <- function(feature_order2_in,data_in,legend_p=FALSE,r2adj=TRUE){
   
@@ -2495,4 +2493,227 @@ anova_test <- anova(rda_res_full_2,rda_res_full_1,permutations = how(nperm = npe
 # p <- pf(anova_test$F[2],anova_test$ResDf[1],anova_test$ResDf[2],lower.tail = F)
 perm_p <- anova_test $`Pr(>F)`[1]
 N <- NROW(X)
+
+### add rda pca mds
+
+library(vegan)
+
+#pdf("pca_rda_biplot_con_scale2.pdf",height=5,width=5)
+
+#scores <- function(...){-scores(...)}
+
+y0_outliers_idx <- apply(y0,2,function(di){outliers::scores(di,type="chisq",prob=TRUE)>1-0.05/483})
+y0_outliers_idx <- rowSums(y0_outliers_idx)==0
+
+y0_outliers <- y0[y0_outliers_idx,]
+
+scaling = 1
+
+rda_pca_1 <- rda(y0_outliers~1,scale=TRUE)
+#0.6521 0.2293 0.1186
+rda_pca_1 <- rda(y0_outliers~1,scale=FALSE)
+#0.6467 0.24898 0.10430
+
+pl <- plot_biplot(rda_pca_1, scaling=scaling, xlim = c(-0.6,0.6),ylim=c(-0.6,0.6),
+                  col_specie=rgb(0.5,0.5,0.5,0),
+                  col_biplot = col_biplot[gsub("f_[0-9]+$","",rownames(pl$biplot))],
+                  col_points_site_fill = rgb(0.5,0.5,0.5,0.5),
+                  mul_rescale = 0.8,
+                  mul_rescale_biplot_label = 0.8
+)
+#pl <- plot(model_both_P_full_2, scaling=2, xlim=c(-2,2),ylim=c(-1.5,1.5),type="n")
+#pl <- plot(model_both_P_full_2, scaling=2, type="n")
+#
+spe2.sc <- scores(rda_pca_1, scaling = scaling, choices=1:2, display="sp")
+spe2.sc <- spe2.sc*0.2
+arrows(0,0,spe2.sc[,1], spe2.sc[,2], length=0, lty=1, col='darkred')
+points(spe2.sc[,1], spe2.sc[,2],pch=3,cex=0.7,col='darkred')
+
+text(spe2.sc[,1], spe2.sc[,2], labels = rownames(spe2.sc),adj = c(-0.2, NA),cex=0.8,col="darkred")
+
+ordiellipse(model_both_P_full_2, rep(1,sum(cd_full_2)), label = FALSE,conf=1-0.05/485,lty=3,scaling = scaling )
+
+dev.off()
+
+pl <- plot_biplot(rda_pca_1, choices = c(1,3),scaling=scaling, xlim = c(-0.6,0.6),ylim=c(-0.6,0.6),
+                  col_specie=rgb(0.5,0.5,0.5,0),
+                  col_biplot = col_biplot[gsub("f_[0-9]+$","",rownames(pl$biplot))],
+                  col_points_site_fill = rgb(0.5,0.5,0.5,0.5),
+                  mul_rescale = 0.8,
+                  mul_rescale_biplot_label = 0.8
+)
+
+spe2.sc <- scores(rda_pca_1, choices = c(1,3),scaling = scaling,  display="sp")
+spe2.sc <- spe2.sc*0.2
+arrows(0,0,spe2.sc[,1], spe2.sc[,2], length=0, lty=1, col='darkred')
+points(spe2.sc[,1], spe2.sc[,2],pch=3,cex=0.7,col='darkred')
+
+text(spe2.sc[,1], spe2.sc[,2], labels = rownames(spe2.sc),adj = c(-0.2, NA),cex=0.8,col="darkred")
+
+#pca_comp <- prcomp(y0_outliers,retx = TRUE)
+
+y0_dist <- dist(y0_outliers)
+
+y0_mds <- wcmdscale(y0_dist,3,eig=TRUE,x.ret=TRUE,w=rep(1,NROW(y0_dist)))
+plot(y0_mds)
+
+
+y0_mds <- wcmdscale(y0_dist,3,eig=TRUE,x.ret=TRUE,w=rep(1,NROW(y0_dist)))
+plot(y0_mds)
+
+y0_mds$eig/sum(y0_mds$eig)
+plot(y0_mds$points[,1],-y0_mds$points[,2])
+y0_mds_points <- y0_mds$points
+
+rda_mds_0 <- rda(y0_mds_points~y0_outliers)
+plot(rda_mds_0,scaling=1)
+
+#
+y0_outliers <- scale(y0_outliers,center = TRUE,scale=FALSE)
+scaling = 1
+rda_pca_1 <- rda(y0_outliers~1)
+choices = c(1,2)
+pl <- plot_biplot(rda_pca_1, choices = choices,scaling=scaling, xlim = c(-0.6,0.6),ylim=c(-0.6,0.6),
+                  col_specie=rgb(0.5,0.5,0.5,0),
+                  col_biplot = col_biplot[gsub("f_[0-9]+$","",rownames(pl$biplot))],
+                  col_points_site_fill = rgb(0.5,0.5,0.5,0.5),
+                  mul_rescale = 0.8,
+                  mul_rescale_biplot_label = 0.8
+)
+
+spe2.sc <- scores(rda_pca_1, choices = choices,scaling = scaling,  display="sp")
+spe2.sc <- spe2.sc*0.2
+arrows(0,0,spe2.sc[,1], spe2.sc[,2], length=0, lty=1, col='darkred')
+points(spe2.sc[,1], spe2.sc[,2],pch=3,cex=0.7,col='darkred')
+text(spe2.sc[,1], spe2.sc[,2], labels = rownames(spe2.sc),adj = c(-0.2, NA),cex=0.8,col="darkred")
+
+rda_pca_1$CA$v
+# PC1        PC2         PC3
+# MG  0.4801000 -0.3905538  0.78547546
+# GO  0.6289263 -0.4709612 -0.61858485
+# DG3 0.6115191  0.7909888  0.01952109
+
+# p1 shared direction 
+# p2 DG3-(MG+GO)
+# p3 MG-GO
+
+# compare mds and cca
+
+head(scores(rda_pca_1)$sites)
+head(y0_mds$points)
+
+head(y0_mds$points)/head(scores(rda_pca_1,choices = 1:3,scaling = 1)$sites)
+
+y0_mds$GOF
+
+cumsum(rda_pca_1$CA$eig)/sum(rda_pca_1$CA$eig)
+#0.6467124 0.8956970 1.0000000
+
+## score and loadings
+
+choices=1:2
+scores(rda_pca_1, choices = choices,scaling = scaling,  display="sp")
+
+scores(rda_pca_1, choices = choices,scaling = scaling,  display="sp")/3.670813
+rda_pca_1$CA$v
+
+## loadings dim 1
+w_v <- (head(y0_mds$points)/head(scores(rda_pca_1)$sites))[1,]
+spe2.sc <- t(rda_pca_1$CA$v[,1:2])*w_v
+
+par(mfrow=c(1,2))
+plot(y0_mds$points[,1],y0_mds$points[,2],xlim=c(-2,2),ylim=c(-2,2))
+spe2.sc <- scores(rda_pca_1, choices = choices,scaling = scaling,  display="sp")
+w_v <- (head(y0_mds$points)/head(scores(rda_pca_1)$sites))[1,]
+spe2.sc <- t(rda_pca_1$CA$v[,1:3])*w_v
+spe2.sc <- spe2.sc
+arrows(0,0,spe2.sc[,1], spe2.sc[,2], length=0, lty=1, col='darkred')
+points(spe2.sc[,1], spe2.sc[,2],pch=3,cex=0.7,col='darkred')
+text(spe2.sc[,1], spe2.sc[,2], labels = rownames(spe2.sc),adj = c(-0.2, NA),cex=0.8,col="darkred")
+
+
+pl <- plot_biplot(rda_pca_1, choices = choices,scaling=scaling, xlim = c(-0.6,0.6),ylim=c(-0.6,0.6),
+                  col_specie=rgb(0.5,0.5,0.5,0),
+                  col_biplot = col_biplot[gsub("f_[0-9]+$","",rownames(pl$biplot))],
+                  col_points_site_fill = rgb(0.5,0.5,0.5,0.5),
+                  mul_rescale = 0.8,
+                  mul_rescale_biplot_label = 0.8
+)
+
+### map to mds 2
+# varpart 
+
+y0_mds <- wcmdscale(y0_dist,2,eig=TRUE,x.ret=TRUE,w=rep(1,NROW(y0_dist)))
+plot(y0_mds)
+
+qr_w <- qr.solve(y0_outliers,y0_mds$points)
+# qr_w = rda_pca_1$CA$v
+
+par(mfrow=c(1,1))
+plot(y0_mds$points[,1],-y0_mds$points[,2],xlim=c(-2,2),ylim=c(-2,2),type="n")
+spe2.sc <- rda_pca_1$CA$v[,1:2]
+spe2.sc <- spe2.sc*2
+arrows(0,0,spe2.sc[,1], spe2.sc[,2], length=0, lty=1, col='darkred')
+points(spe2.sc[,1], spe2.sc[,2],pch=3,cex=0.7,col='darkred')
+text(spe2.sc[,1], spe2.sc[,2], labels = rownames(spe2.sc),adj = c(-0.2, NA),cex=0.8,col="darkred")
+gfr_col <- (d_kora_analysis$utgfr_ckd_cr[y0_outliers_idx]<60)+1
+points(y0_mds$points[,1],-y0_mds$points[,2],col=c("black","red")[gfr_col])
+#glu_col <- (d_kora_analysis$utglukfast_a[y0_outliers_idx]>100)+1
+#points(y0_mds$points[,1],-y0_mds$points[,2],col=c("black","blue")[glu_col])
+
+gfr_col <- (d_kora_analysis$utgfr_ckd_cr[y0_outliers_idx]<60)+1
+points(y0_mds$points[,1],-y0_mds$points[,2],col=c("black","red")[gfr_col])
+
+gfr_col <- (d_kora_analysis$utgfr_ckd_cr[y0_outliers_idx]>120)+1
+points(y0_mds$points[,1],-y0_mds$points[,2],col=c("black","blue")[gfr_col])
+
+cors <- apply(d_kora_analysis[y0_outliers_idx,feature_order$raw_name],2,function(x){
+  cor(as.numeric(x),y0_mds$points[,1],use="pairwise.complete.obs")
+})
+
+uthyact_col <- (d_kora_analysis$uthyact[y0_outliers_idx]>1)+1
+points(y0_mds$points[,1],-y0_mds$points[,2],col=c("black","red")[uthyact_col])
+
+cor(d_kora_analysis$uthyact,d_kora_analysis$utdiamm)
+
+utsysmm_col <- (d_kora_analysis$utsysmm[y0_outliers_idx]<90)+1
+points(y0_mds$points[,1],-y0_mds$points[,2],col=c("black","red")[utsysmm_col])
+
+utdiamm_col <- (d_kora_analysis$utdiamm[y0_outliers_idx]<60)+1
+points(y0_mds$points[,1],-y0_mds$points[,2],col=c("black","red")[utdiamm_col])
+
+
+ul_ggt_col <- (d_kora_analysis$ul_ggt[y0_outliers_idx]>50)+1
+points(y0_mds$points[,1],-y0_mds$points[,2],col=c("black","red")[ul_ggt_col])
+
+ul_ggt_col <- (d_kora_analysis$ul_ggt[y0_outliers_idx]<50)+1
+points(y0_mds$points[,1],-y0_mds$points[,2],col=c("black","red")[ul_ggt_col])
+
+ul_ggt_col <- (d_kora_analysis$ul_ggt[y0_outliers_idx]==45)+1
+points(y0_mds$points[,1],-y0_mds$points[,2],col=c("black","red")[ul_ggt_col],cex=2)
+
+
+glu_col <- (d_kora_analysis$utglukfast_a[y0_outliers_idx]<80)+1
+points(y0_mds$points[,1],-y0_mds$points[,2],col=c("black","blue")[glu_col])
+
+which.min(as.numeric(y0_mds$points[,1]))
+points(y0_mds$points[387,1],y0_mds$points[387,2],cex=2,col="blue")
+d_kora_analysis[y0_outliers_idx,][387,]
+2^(y0_outliers[387,])
+
+d_kora_analysis[y0_outliers_idx,][387,c("ul_ggt","utgfr_ckd_cr")]
+
+gfr_ggt_col <- (d_kora_analysis$ul_ggt[ul_ggt]<80 & d_kora_analysis$utgfr_ckd_cr[y0_outliers_idx]<80)+1
+points(y0_mds$points[,1],-y0_mds$points[,2],col=c("black","blue")[glu_col])
+
+
+## boot strap 
+
+
+
+
+##
+
+
+
 
