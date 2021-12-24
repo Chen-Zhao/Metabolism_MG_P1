@@ -1984,6 +1984,7 @@ f_assoc_plot <- function(feature_order2_in,data_in,legend_p=FALSE,r2adj=TRUE){
 res_r2_list <- list(res_r2_mg,res_r2_go,res_r2_dg3)
 
 fi_to_plot <- "utgfr_ckd_cr"
+jitter_mod = FALSE
 fi_to_plot <- "ul_hbava"
 jitter_mod = TRUE
 jitter_factor = 15
@@ -2013,12 +2014,15 @@ jitter_mod = TRUE
 jitter_factor = 15
 
 
-
+{
 a0 <- which(feature_order$raw_name==fi_to_plot)
+a0_name <- feature_order2[a0,"name"]
 fi_dtype <- rbind(res_r2_mg[,a0],res_r2_go[,a0],res_r2_dg3[,a0])
 fi_dtype_min <- which.min(as.numeric(fi_dtype[,5]))
 di_to_plot <- f_get_x(a0 = a0,feature_order = feature_order,res_r2_mg = res_r2_list[[fi_dtype_min]])
-
+if(fi_to_plot=="utglukfast_a"){
+  di_to_plot <- irnt_f(di_to_plot)
+}
 fi_dtype
 
 fi_col <- rep("grey",3)
@@ -2033,6 +2037,9 @@ di_major <- list(di_mg,di_go,di_dg3)[[fi_dtype_min]]
 
 ylab = fi_dtype[fi_dtype_min,1]
 ylab = gsub("log_","",ylab)
+if(fi_to_plot=="utglukfast_a"){
+  ylab = "irn"
+}
 
 idx_rm_na <- complete.cases(cbind(di_major,di_to_plot,di_mg,di_go,di_dg3))
 
@@ -2070,16 +2077,24 @@ if(jitter_mod){
   di_to_plot <- jitter(di_to_plot,factor = jitter_factor)
 }
 
+pdf(paste0("scatter_plot_",fi_to_plot,".pdf"),width=8,height = 3)
+
 par(mfrow=c(1,3))
 
-par(mar=c(4,2,4,1))
-plot(di_mg[!idx_rm],di_to_plot[!idx_rm],pch=19,cex=.7,col=fi_col[1],ylab=ylab)
-par(mar=c(4,1,4,2))
-plot(di_go[!idx_rm],di_to_plot[!idx_rm],pch=19,cex=.7,col=fi_col[2],ylab="")
-par(mar=c(4,0,4,3))
-plot(di_dg3[!idx_rm],di_to_plot[!idx_rm],pch=19,cex=.7,col=fi_col[3],ylab="")
-
-ylab
+par(mar=c(4,4,4,0))
+plot(di_mg[!idx_rm],di_to_plot[!idx_rm],pch=19,cex=.7,col=fi_col[1],ylab="",xlab="MG(log2)")
+mtext(paste0(fi_to_plot,"(",ylab,")"),2,line=2.5)
+par(mar=c(4,2,4,2))
+plot(di_go[!idx_rm],di_to_plot[!idx_rm],pch=19,cex=.7,col=fi_col[2],ylab="",axes=F,xlab="GO(log2)")
+axis(1)
+box()
+par(mar=c(4,0,4,4))
+plot(di_dg3[!idx_rm],di_to_plot[!idx_rm],pch=19,cex=.7,col=fi_col[3],ylab="",axes=F,xlab="3DG(log2)")
+axis(1)
+box()
+mtext(a0_name,4,line = 1)
+dev.off()
+}
 
 
 #lines(loess(di_to_plot[!idx_rm]~di_mg[!idx_rm],span = 1.5))
@@ -2558,7 +2573,7 @@ y0_mds <- wcmdscale(y0_dist,3,eig=TRUE,x.ret=TRUE,w=rep(1,NROW(y0_dist)))
 plot(y0_mds)
 
 
-y0_mds <- wcmdscale(y0_dist,3,eig=TRUE,x.ret=TRUE,w=rep(1,NROW(y0_dist)))
+y0_mds <- wcmdscale(y0_dist,2,eig=TRUE,x.ret=TRUE,w=rep(1,NROW(y0_dist)))
 plot(y0_mds)
 
 y0_mds$eig/sum(y0_mds$eig)
@@ -2649,7 +2664,7 @@ plot(y0_mds)
 qr_w <- qr.solve(y0_outliers,y0_mds$points)
 # qr_w = rda_pca_1$CA$v
 
-par(mfrow=c(1,1))
+par(mfrow=c(1,1),mar=c(4,4,4,4))
 plot(y0_mds$points[,1],-y0_mds$points[,2],xlim=c(-2,2),ylim=c(-2,2),type="n")
 spe2.sc <- rda_pca_1$CA$v[,1:2]
 spe2.sc <- spe2.sc*2
@@ -2703,8 +2718,40 @@ d_kora_analysis[y0_outliers_idx,][387,]
 
 d_kora_analysis[y0_outliers_idx,][387,c("ul_ggt","utgfr_ckd_cr")]
 
-gfr_ggt_col <- (d_kora_analysis$ul_ggt[ul_ggt]<80 & d_kora_analysis$utgfr_ckd_cr[y0_outliers_idx]<80)+1
-points(y0_mds$points[,1],-y0_mds$points[,2],col=c("black","blue")[glu_col])
+gfr_ggt_col <- (d_kora_analysis$ul_ggt[y0_outliers_idx]<50 & d_kora_analysis$utgfr_ckd_cr[y0_outliers_idx]>110)+1
+points(y0_mds$points[,1],-y0_mds$points[,2],col=c("black","blue")[gfr_ggt_col])
+
+## plot mds 
+
+library(mdatools)
+
+rda_pca_1$CA$eig/sum(rda_pca_1$CA$eig)
+y0_mds$eig/sum(y0_mds$eig)
+mdsvars = y0_mds$eig/sum(y0_mds$eig)
+
+pdf("mds_plot.pdf",height=5,width=5)
+plot(y0_mds$points[,1],-y0_mds$points[,2],xlim=c(-2,2)*1.5,ylim=c(-2,2)*1.5,type="n",
+     xlab=paste0("Dim.1(",round(mdsvars[1],4),")"),
+     ylab=paste0("Dim.2(",round(mdsvars[2],4),")")
+     )
+spe2.sc <- rda_pca_1$CA$v[,1:2]
+spe2.sc <- spe2.sc*3
+arrows(0,0,spe2.sc[,1], spe2.sc[,2], length=0, lty=1, col='darkred')
+points(spe2.sc[,1], spe2.sc[,2],pch=3,cex=0.7,col='darkred')
+points(y0_mds$points[,1],-y0_mds$points[,2],pch=21,bg=rgb(0.5,0.5,0.5,0.5),col=rgb(0,0,0,0.5))
+text(spe2.sc[,1], spe2.sc[,2], labels = rownames(spe2.sc),adj = c(-0.2, NA),cex=0.8,col="darkred")
+t1 <- as.numeric(y0_mds$points[,1])
+t2 <- as.numeric(y0_mds$points[,2])
+s1 <- sd(t1)^2
+s2 <- sd(t2)^2
+nobj <- length(t1)
+conf.lim=1-0.05/482
+T2lim <- (2 * (nobj - 1)/(nobj - 2)) * qf(conf.lim, 2, (nobj - 2))
+a <- sqrt(T2lim * s1)
+b <- sqrt(T2lim * s2)
+ellipse(a = a, b = b, col = "darkgrey", lty = 3)
+abline(h=0,v=0,col="darkgrey",lty=3)
+dev.off()
 
 
 ## boot strap 
@@ -2712,7 +2759,19 @@ points(y0_mds$points[,1],-y0_mds$points[,2],col=c("black","blue")[glu_col])
 
 
 
-##
+## output 
+
+table(dat_MG_age_sex_nonoutlier$age_group,dat_MG_age_sex_nonoutlier$RLS )
+
+rls_full_data_idx_in_ttest <- which(!is.na(match(d_rls$ID,
+      dat_MG_age_sex_nonoutlier[which(dat_MG_age_sex_nonoutlier$RLS==1 & dat_MG_age_sex_nonoutlier$age_group=="(55,65]"),]$"ID")))
+d_rls[rls_full_data_idx_in_ttest,c("ID","Serum_ID","IHG_Nr","Status")]
+
+
+write.table(dat_MG_age_sex_nonoutlier,"dat_MG_age_sex_nonoutlier.txt",col.names = TRUE,row.names = F,sep="\t",quote=F)
+
+
+
 
 
 
